@@ -1,0 +1,262 @@
+.image-strip,
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
+  gap: 10px;
+}
+
+.image-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.image-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+}
+
+.image-card span {
+  display: block;
+  padding: 7px;
+  color: var(--muted);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer {
+  display: grid;
+  gap: 10px;
+  align-self: end;
+  padding: 12px 18px max(12px, env(safe-area-inset-bottom));
+  border-top: 1px solid #26272b;
+  background: var(--bg);
+  position: relative;
+}
+
+.composer.is-dragover {
+  outline: 2px solid var(--accent);
+  outline-offset: -6px;
+  background: #34374a;
+}
+
+.composer textarea {
+  min-height: 78px;
+  max-height: 210px;
+  resize: vertical;
+  padding: 12px;
+}
+
+.quick-controls {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px;
+  align-items: stretch;
+}
+
+.ref-button {
+  min-height: 34px;
+  white-space: nowrap;
+}
+
+.ratio-picker {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ratio-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ratio-option {
+  position: relative;
+  min-width: 0;
+}
+
+.ratio-option span {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-dark);
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.ratio-option input:checked + span {
+  border-color: var(--accent);
+  background: #3b428a;
+  color: white;
+}
+
+.composer-actions {
+  display: grid;
+  align-items: stretch;
+  gap: 0;
+}
+
+.composer-actions .primary-button {
+  width: 100%;
+  min-height: 52px;
+  white-space: normal;
+  line-height: 1.2;
+}
+
+.refs-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ref-chip {
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  border: 0;
+  cursor: pointer;
+}
+
+.gallery-grid {
+  padding: 12px;
+  overflow: auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.image-strip-large {
+  display: block;
+  padding-bottom: 14px;
+}
+
+.image-card-large {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.image-card-large img {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: auto;
+  object-fit: contain;
+}
+
+.image-card-large span {
+  white-space: normal;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 70%);
+}
+
+.modal-card {
+  position: relative;
+  width: min(980px, 100%);
+  max-height: calc(100vh - 48px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  box-shadow: var(--shadow);
+}
+
+.modal-card header,
+.modal-card footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.modal-card h2,
+.modal-card p {
+  margin: 0;
+}
+
+.modal-card p {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.modal-card img {
+  max-width: 100%;
+  max-height: 72vh;
+  margin: auto;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+@media (max-width: 1050px) {
+  .app-shell {
+    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 300px;
+  }
+
+  .gallery-panel {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    border-left: 0;
+    border-top: 1px solid #26272b;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .chat-panel {
+    min-height: 0;
+  }
+
+  .gallery-panel {
+    display: none;
+  }
+
+  .ratio-picker {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .quick-controls {
+    grid-template-columns: 1fr;
+  }
+}
