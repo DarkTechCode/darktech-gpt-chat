@@ -175,6 +175,14 @@ p {
   overflow: hidden;
 }
 
+.app-shell:not(.is-image-mode) {
+  grid-template-columns: 400px minmax(0, 1fr);
+}
+
+.app-shell:not(.is-image-mode) .gallery-panel {
+  display: none;
+}
+
 .sidebar,
 .gallery-panel {
   background: var(--panel-dark);
@@ -205,6 +213,12 @@ p {
 
 .topbar {
   background: var(--bg);
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .new-chat-button {
@@ -334,6 +348,7 @@ p {
   border-radius: 8px;
   background: var(--panel);
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .message.user .bubble {
@@ -343,4 +358,57 @@ p {
 
 .message.is-error .bubble {
   border: 1px solid var(--danger);
+}
+
+.error-details {
+  width: fit-content;
+  max-width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgb(242 63 66 / 45%);
+  border-radius: 8px;
+  background: rgb(242 63 66 / 10%);
+  color: #ffd7d7;
+}
+
+.error-details summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.error-detail-rows {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.error-detail-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.error-detail-row span,
+.error-pre strong {
+  color: var(--muted);
+}
+
+.error-detail-row code,
+.error-pre pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.error-pre {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.error-pre pre {
+  margin: 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 20%);
+  color: #ffe8e8;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
 }

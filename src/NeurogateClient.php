@@ -19,17 +19,7 @@ final class NeurogateClient
 
     public function generate(string $prompt, array $referenceDataUrls = [], ?string $size = null): array
     {
-        $payload = $this->payload($prompt, $referenceDataUrls, $size);
-        $body = $this->post('/responses', $payload);
-        $decoded = json_decode($body, true);
-
-        if (!is_array($decoded)) {
-            $decoded = $this->extractor->sseEvents($body);
-        }
-
-        if (!is_array($decoded)) {
-            throw new RuntimeException('API returned an unreadable response.');
-        }
+        $decoded = $this->response($this->imagePayload($prompt, $referenceDataUrls, $size));
 
         $images = $this->extractor->images($decoded);
 
@@ -42,7 +32,20 @@ final class NeurogateClient
         ];
     }
 
-    private function payload(string $prompt, array $referenceDataUrls, ?string $size): array
+    public function chat(array $messages): array
+    {
+        $decoded = $this->response($this->chatPayload($messages));
+        $text = $this->extractor->text($decoded);
+
+        return [
+            'id' => is_array($decoded) && isset($decoded['id']) ? (string) $decoded['id'] : null,
+            'text' => $text,
+            'usage' => $this->extractor->usage($decoded),
+            'raw' => $decoded,
+        ];
+    }
+
+    private function imagePayload(string $prompt, array $referenceDataUrls, ?string $size): array
     {
         $tool = [
             'type' => 'image_generation',
@@ -72,7 +75,7 @@ final class NeurogateClient
 
         $payload = [
             'model' => $this->config->string('api.model', 'gpt-5.5'),
-            'instructions' => $this->config->string('prompts.system'),
+            'instructions' => $this->config->string('prompts.image'),
             'input' => [
                 ['role' => 'user', 'content' => $content],
             ],
@@ -86,6 +89,58 @@ final class NeurogateClient
         }
 
         return $payload;
+    }
+
+    private function chatPayload(array $messages): array
+    {
+        return [
+            'model' => $this->config->string('api.model', 'gpt-5.5'),
+            'instructions' => $this->config->string('prompts.chat'),
+            'input' => $this->chatInput($messages),
+            'store' => $this->config->boolean('api.store', false),
+            'stream' => $this->config->boolean('api.stream', false),
+        ];
+    }
+
+    private function chatInput(array $messages): array
+    {
+        $input = [];
+
+        foreach ($messages as $message) {
+            if (!is_array($message)) {
+                continue;
+            }
+
+            $role = ($message['role'] ?? '') === 'assistant' ? 'assistant' : 'user';
+            $content = isset($message['content']) ? trim((string) $message['content']) : '';
+
+            if ($content === '') {
+                continue;
+            }
+
+            $input[] = [
+                'role' => $role,
+                'content' => $content,
+            ];
+        }
+
+        return $input;
+    }
+
+    private function response(array $payload): array
+    {
+        $body = $this->post('/responses', $payload);
+        $decoded = json_decode($body, true);
+
+        if (!is_array($decoded)) {
+            $decoded = $this->extractor->sseEvents($body);
+        }
+
+        if (!is_array($decoded)) {
+            throw new RuntimeException('API returned an unreadable response.');
+        }
+
+        return $decoded;
     }
 
     private function post(string $endpoint, array $payload): string

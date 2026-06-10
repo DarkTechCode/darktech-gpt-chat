@@ -42,7 +42,7 @@ $boot = [
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>GPT Images</title>
+    <title>GPT Chat</title>
     <link rel="stylesheet" href="assets/app.css">
     <link rel="stylesheet" href="assets/app-ui.css">
     <meta name="author" content="Dark Wizard">
@@ -50,7 +50,7 @@ $boot = [
 
 <body>
     <script>
-        window.GPT_IMAGE_APP = <?= json_encode($boot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+        window.GPT_CHAT_APP = <?= json_encode($boot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
     </script>
 
     <?php if (!$authenticated): ?>
@@ -58,7 +58,7 @@ $boot = [
             <form class="login-card" data-login-form>
                 <div>
                     <p class="eyebrow">Private</p>
-                    <h1>GPT Images</h1>
+                    <h1>GPT Chat</h1>
                 </div>
                 <label class="field">
                     <span>Пароль</span>
@@ -69,10 +69,10 @@ $boot = [
             </form>
         </main>
     <?php else: ?>
-        <div class="app-shell">
+        <div class="app-shell" data-app-shell>
             <aside class="sidebar">
                 <header class="sidebar-head">
-                    <strong>GPT Images</strong>
+                    <strong>GPT Chat</strong>
                     <button type="button" class="ghost-button new-chat-button" data-new-chat>+ новый чат</button>
                 </header>
                 <nav class="chat-list" data-chat-list></nav>
@@ -92,7 +92,10 @@ $boot = [
                         <h1 data-chat-title>Новый чат</h1>
                         <p class="token-summary" data-chat-usage>токены: нет данных</p>
                     </div>
-                    <span class="status-pill" data-status>Готов</span>
+                    <div class="topbar-actions">
+                        <button type="button" class="ghost-button mode-button" data-image-mode aria-pressed="false">Картинки</button>
+                        <span class="status-pill" data-status>Готов</span>
+                    </div>
                 </header>
 
                 <?php if (!$boot['tokenConfigured']): ?>
@@ -102,9 +105,10 @@ $boot = [
                 <section class="messages" data-messages></section>
 
                 <form class="composer" data-composer enctype="multipart/form-data">
+                    <input type="hidden" name="mode" value="chat" data-mode>
                     <div class="refs-tray" data-refs-tray hidden></div>
-                    <textarea name="prompt" data-prompt rows="3" placeholder="Опишите изображение..." required></textarea>
-                    <div class="quick-controls">
+                    <textarea name="prompt" data-prompt rows="3" placeholder="Напишите сообщение..." required></textarea>
+                    <div class="quick-controls" data-image-controls hidden>
                         <input type="file" data-ref-input name="references[]" accept="image/png,image/jpeg,image/webp" multiple hidden>
                         <button type="button" class="ghost-button ref-button" data-attach>+ референс</button>
                         <fieldset class="ratio-picker" aria-label="Пропорции изображения">
@@ -124,7 +128,7 @@ $boot = [
                         </fieldset>
                     </div>
                     <div class="composer-actions">
-                        <button type="submit" class="primary-button" data-send>Сгенерировать</button>
+                        <button type="submit" class="primary-button" data-send>Отправить</button>
                     </div>
                 </form>
             </main>
@@ -167,6 +171,7 @@ $boot = [
     <script src="assets/usage.js"></script>
     <script src="assets/refs.js"></script>
     <script src="assets/draft.js"></script>
+    <script src="assets/errors.js"></script>
     <script src="assets/app.js"></script>
 </body>
 

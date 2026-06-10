@@ -65,6 +65,21 @@
   white-space: nowrap;
 }
 
+.mode-button {
+  min-height: 34px;
+  white-space: nowrap;
+}
+
+.mode-button.is-active {
+  background: var(--accent);
+  color: white;
+}
+
+.mode-button:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
 .ratio-picker {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -223,6 +238,11 @@
     grid-template-rows: minmax(0, 1fr) 300px;
   }
 
+  .app-shell:not(.is-image-mode) {
+    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
   .gallery-panel {
     grid-column: 1 / -1;
     grid-row: 2;
@@ -236,6 +256,11 @@
     height: 100vh;
     height: 100dvh;
     min-height: 0;
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .app-shell:not(.is-image-mode) {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1fr);
   }

@@ -1,6 +1,6 @@
 (function () {
-    const boot = window.GPT_IMAGE_APP || {};
-    const state = { chats: [], activeChat: null, gallery: [], galleryRefs: [], usage: null };
+    const boot = window.GPT_CHAT_APP || {};
+    const state = { chats: [], activeChat: null, gallery: [], galleryRefs: [], usage: null, mode: 'chat', busy: false };
 
     document.addEventListener('DOMContentLoaded', function () {
         const loginForm = document.querySelector('[data-login-form]');
@@ -34,20 +34,30 @@
         $('[data-new-chat]').addEventListener('click', createChat);
         $('[data-logout]').addEventListener('click', logout);
         $('[data-composer]').addEventListener('submit', generate);
+        $('[data-image-mode]').addEventListener('click', toggleImageMode);
         window.PromptDraft.bind($('[data-prompt]'));
-        $('[data-attach]').addEventListener('click', function () { $('[data-ref-input]').click(); });
-        $('[data-ref-input]').addEventListener('change', renderRefs);
-        window.ReferenceDrop.bind($('[data-composer]'), $('[data-ref-input]'), renderRefs, rejectRefs);
-        $('[data-refresh-gallery]').addEventListener('click', loadGallery);
+        $('[data-attach]').addEventListener('click', function () { setMode('image'); $('[data-ref-input]').click(); });
+        $('[data-ref-input]').addEventListener('change', handleRefsChange);
+        window.ReferenceDrop.bind($('[data-composer]'), $('[data-ref-input]'), handleRefsChange, rejectRefs);
+        $('[data-refresh-gallery]').addEventListener('click', refreshGallery);
         document.querySelectorAll('[data-close-modal]').forEach(function (node) {
             node.addEventListener('click', closeModal);
         });
         $('[data-copy-link]').addEventListener('click', copyModalLink);
         $('[data-open-chat]').addEventListener('click', openModalChat);
         $('[data-modal-reference]').addEventListener('click', addModalReference);
+        renderMode();
     }
 
-    async function loadAll() { await loadChats(); await loadGallery(); }
+    async function loadAll() {
+        try {
+            await loadChats();
+        } catch (exception) {
+            appendClientError('Не удалось загрузить чаты.', exception);
+        }
+
+        await refreshGallery();
+    }
 
     async function loadChats(preferredId) {
         const data = await request('api/chats.php');
@@ -73,11 +83,16 @@
     }
 
     async function createChat() {
-        const form = new FormData();
-        form.append('title', 'Новый чат');
-        const data = await request('api/chats.php', { method: 'POST', body: form });
-        state.activeChat = data.chat;
-        await loadChats(data.chat.id);
+        try {
+            setMode('chat');
+            const form = new FormData();
+            form.append('title', 'Новый чат');
+            const data = await request('api/chats.php', { method: 'POST', body: form });
+            state.activeChat = data.chat;
+            await loadChats(data.chat.id);
+        } catch (exception) {
+            appendClientError('Не удалось создать чат.', exception);
+        }
     }
 
     async function logout() {
@@ -95,9 +110,13 @@
 
         if (!prompt) { return; }
 
+        form.set('mode', state.mode);
+
         if (state.activeChat) { form.append('chat_id', state.activeChat.id); }
 
-        state.galleryRefs.forEach(function (path) { form.append('gallery_refs[]', path); });
+        if (state.mode === 'image') {
+            state.galleryRefs.forEach(function (path) { form.append('gallery_refs[]', path); });
+        }
 
         setBusy(true);
         startGenerationTimer();
@@ -110,15 +129,18 @@
             window.PromptDraft.clear();
             state.galleryRefs = [];
             renderRefs();
+            renderMode();
             renderChat();
             await loadChats(data.chat.id);
-            await loadGallery();
+            if (state.mode === 'image') { await loadGallery(); }
         } catch (exception) {
             finalStatus = exception.message + ' · ' + formatTimer(stopGenerationTimer());
 
             if (exception.payload && exception.payload.chat) {
                 state.activeChat = exception.payload.chat;
                 renderChat();
+            } else {
+                appendClientError('Не удалось получить ответ.', exception, prompt);
             }
         } finally {
             setBusy(false);
@@ -127,6 +149,14 @@
     }
 
     async function loadGallery() { const data = await request('api/gallery.php'); state.gallery = data.images || []; renderGallery(); }
+
+    async function refreshGallery() {
+        try {
+            await loadGallery();
+        } catch (exception) {
+            appendClientError('Не удалось загрузить галерею.', exception);
+        }
+    }
 
     function renderSidebar() {
         const list = $('[data-chat-list]');
@@ -137,7 +167,11 @@
             const item = document.createElement('button');
             item.type = 'button';
             item.className = 'chat-item' + (state.activeChat && state.activeChat.id === chat.id ? ' is-active' : '');
-            item.addEventListener('click', function () { openChat(chat.id); });
+            item.addEventListener('click', function () {
+                openChat(chat.id).catch(function (exception) {
+                    appendClientError('Не удалось открыть чат.', exception);
+                });
+            });
             item.append(child('strong', chat.title));
             item.append(child('span', chat.preview || ''));
             item.append(child('span', window.UsageFormatter.short(chat.usage), 'chat-usage'));
@@ -162,6 +196,7 @@
             article.className = 'message ' + message.role + (message.error ? ' is-error' : '');
             article.append(child('div', roleName(message.role) + ' · ' + formatDate(message.createdAt), 'message-head'));
             article.append(child('div', message.content || '', 'bubble'));
+            if (message.errorDetails) { article.append(window.ChatErrors.panel(message.errorDetails)); }
 
             if (message.images && message.images.length) { article.append(imageStrip(message.images, message.role, state.activeChat.id)); }
 
@@ -243,6 +278,11 @@
         tray.hidden = tray.children.length === 0;
     }
 
+    function handleRefsChange() {
+        if (state.mode !== 'image') { setMode('image'); }
+        renderRefs();
+    }
+
     function rejectRefs(count) { setStatus('Пропущено файлов: ' + count); }
 
     function openModal(image) {
@@ -280,6 +320,7 @@
         const path = $('[data-modal]').dataset.path;
 
         if (path && state.galleryRefs.indexOf(path) === -1) {
+            setMode('image');
             state.galleryRefs.push(path);
             renderRefs();
         }
@@ -302,27 +343,56 @@
             init.headers['X-CSRF-Token'] = boot.csrfToken;
         }
 
-        const response = await fetch(url, init);
-        const payload = await response.json().catch(function () { return {}; });
+        let response;
+
+        try {
+            response = await fetch(url, init);
+        } catch (exception) {
+            const error = new Error('Сетевой запрос не выполнен: ' + exception.message);
+            error.details = {
+                type: exception.name || 'NetworkError',
+                url: url,
+            };
+            throw error;
+        }
+
+        const text = await response.text();
+        const payload = parseJson(text);
 
         if (!response.ok || payload.ok === false) {
             const error = new Error(payload.error || 'Request failed.');
             error.payload = payload;
+            error.status = response.status;
+            error.statusText = response.statusText;
+            error.url = url;
+            error.responseText = payload.error ? '' : text.slice(0, 1600);
             throw error;
         }
 
         return payload;
     }
 
+    function parseJson(text) {
+        if (!text) { return {}; }
+
+        try {
+            return JSON.parse(text);
+        } catch (_exception) {
+            return {};
+        }
+    }
+
     function startGenerationTimer() {
+        const busyLabel = state.mode === 'image' ? 'Генерация' : 'Ответ';
+
         if (!window.GenerationTimer) {
-            setStatus('Генерация');
+            setStatus(busyLabel);
             return;
         }
 
         window.GenerationTimer.start(function (label) {
-            setStatus('Генерация · ' + label);
-            $('[data-send]').textContent = 'Генерация ' + label;
+            setStatus(busyLabel + ' · ' + label);
+            $('[data-send]').textContent = busyLabel + ' ' + label;
         });
     }
 
@@ -332,14 +402,107 @@
 
     function setBusy(isBusy) {
         const send = $('[data-send]');
+        state.busy = isBusy;
         send.disabled = isBusy;
+        $('[data-image-mode]').disabled = isBusy;
 
-        if (!isBusy) { send.textContent = 'Сгенерировать'; }
+        if (!isBusy) { send.textContent = sendLabel(); }
 
         $('[data-status]').classList.toggle('is-busy', isBusy);
     }
 
     function setStatus(text) { $('[data-status]').textContent = text; }
+
+    function appendClientError(title, exception, prompt) {
+        const now = new Date().toISOString();
+        const message = exception && exception.message ? exception.message : title;
+
+        if (!state.activeChat) {
+            state.activeChat = {
+                id: 'local_' + Date.now(),
+                title: prompt || title,
+                createdAt: now,
+                updatedAt: now,
+                messages: [],
+                usage: null,
+            };
+        }
+
+        if (prompt) {
+            state.activeChat.messages.push({
+                id: tempId('msg'),
+                role: 'user',
+                content: prompt,
+                createdAt: now,
+                mode: state.mode,
+            });
+        }
+
+        state.activeChat.messages.push({
+            id: tempId('err'),
+            role: 'assistant',
+            content: 'Ошибка: ' + message,
+            createdAt: now,
+            mode: state.mode,
+            error: true,
+            errorDetails: window.ChatErrors.detailsFromException(exception, title, state.mode),
+        });
+
+        renderChat();
+        setStatus(message);
+    }
+
+    function toggleImageMode() {
+        setMode(state.mode === 'image' ? 'chat' : 'image');
+    }
+
+    function setMode(mode) {
+        if (state.mode === mode) {
+            renderMode();
+            return;
+        }
+
+        state.mode = mode;
+
+        if (mode === 'chat') { clearReferences(); }
+
+        renderMode();
+    }
+
+    function renderMode() {
+        const isImage = state.mode === 'image';
+        const modeInput = $('[data-mode]');
+        const imageControls = $('[data-image-controls]');
+        const imageButton = $('[data-image-mode]');
+        const prompt = $('[data-prompt]');
+        const shell = $('[data-app-shell]');
+
+        if (modeInput) { modeInput.value = state.mode; }
+        if (imageControls) { imageControls.hidden = !isImage; }
+        if (shell) { shell.classList.toggle('is-image-mode', isImage); }
+
+        if (imageButton) {
+            imageButton.classList.toggle('is-active', isImage);
+            imageButton.setAttribute('aria-pressed', isImage ? 'true' : 'false');
+        }
+
+        if (prompt) {
+            prompt.placeholder = isImage ? 'Опишите изображение...' : 'Напишите сообщение...';
+        }
+
+        if (!state.busy) { $('[data-send]').textContent = sendLabel(); }
+    }
+
+    function clearReferences() {
+        const input = $('[data-ref-input]');
+
+        if (input) { input.value = ''; }
+
+        state.galleryRefs = [];
+        renderRefs();
+    }
+
+    function sendLabel() { return state.mode === 'image' ? 'Сгенерировать' : 'Отправить'; }
 
     function child(tag, text, className) {
         const node = document.createElement(tag);
@@ -351,6 +514,8 @@
 
         return node;
     }
+
+    function tempId(prefix) { return prefix + '_' + Date.now() + '_' + Math.random().toString(16).slice(2); }
 
     function roleName(role) { return role === 'user' ? 'Вы' : 'Ответ'; }
 

@@ -17,9 +17,18 @@ final class ResponseImageExtractor
     public function text(array $payload): string
     {
         $parts = [];
-        $this->collectText($payload, $parts);
+        $deltas = [];
+        $this->collectText($payload, $parts, $deltas);
 
-        return trim(implode("\n", array_unique(array_filter($parts))));
+        $parts = array_values(array_unique(array_filter($parts, static function (string $part): bool {
+            return trim($part) !== '';
+        })));
+
+        if (count($parts) > 0) {
+            return trim(implode("\n", $parts));
+        }
+
+        return trim(implode('', $deltas));
     }
 
     public function usage(array $payload): ?array
@@ -78,18 +87,30 @@ final class ResponseImageExtractor
         }
     }
 
-    private function collectText($value, array &$parts): void
+    private function collectText($value, array &$parts, array &$deltas): void
     {
         if (!is_array($value)) {
             return;
+        }
+
+        if (isset($value['output_text']) && is_string($value['output_text'])) {
+            $parts[] = $value['output_text'];
         }
 
         if (($value['type'] ?? '') === 'output_text' && isset($value['text'])) {
             $parts[] = (string) $value['text'];
         }
 
+        if (($value['type'] ?? '') === 'response.output_text.done' && isset($value['text'])) {
+            $parts[] = (string) $value['text'];
+        }
+
+        if (($value['type'] ?? '') === 'response.output_text.delta' && isset($value['delta'])) {
+            $deltas[] = (string) $value['delta'];
+        }
+
         foreach ($value as $nested) {
-            $this->collectText($nested, $parts);
+            $this->collectText($nested, $parts, $deltas);
         }
     }
 

@@ -19,7 +19,7 @@ final class Auth
             return;
         }
 
-        $name = $this->config->string('auth.session_name', 'gpt_images_session');
+        $name = $this->config->string('auth.session_name', 'gpt_chat_session');
 
         if ($name !== '') {
             session_name($name);

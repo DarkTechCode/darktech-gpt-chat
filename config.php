@@ -6,7 +6,7 @@ return [
     'auth' => [
         'password' => 'neurogate',
         'password_hash' => null,
-        'session_name' => 'gpt_images_session',
+        'session_name' => 'gpt_chat_session',
     ],
 
     'api' => [
@@ -41,7 +41,8 @@ return [
     ],
 
     'prompts' => [
-        'system' => 'You are an image generation assistant. Use image_generation to create or edit images requested by the user. Return image results without adding readable text unless the user asks for text.',
+        'chat' => 'You are a helpful assistant. Answer clearly and naturally in the user\'s language.',
+        'image' => 'You are an image generation assistant. Use image_generation to create or edit images requested by the user. Return image results without adding readable text unless the user asks for text.',
     ],
 
     'storage' => [
