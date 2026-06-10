@@ -43,6 +43,7 @@
         setValue(form, 'api.timeoutSeconds', settings.api && settings.api.timeoutSeconds);
         setValue(form, 'usage.tokenMultiplier', settings.usage && settings.usage.tokenMultiplier);
         setValue(form, 'gallery.pageSize', settings.gallery && settings.gallery.pageSize);
+        setValue(form, 'gallery.columns', settings.gallery && settings.gallery.columns);
         setValue(form, 'prompts.chat', settings.prompts && settings.prompts.chat);
         setValue(form, 'prompts.image', settings.prompts && settings.prompts.image);
         setValue(form, 'auth.password', '');
@@ -73,6 +74,7 @@
             },
             gallery: {
                 pageSize: value(form, 'gallery.pageSize'),
+                columns: value(form, 'gallery.columns'),
             },
             prompts: {
                 chat: value(form, 'prompts.chat'),

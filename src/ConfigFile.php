@@ -19,6 +19,7 @@ final class ConfigFile
     {
         $values = $this->read();
         $galleryPageSize = $this->integer($values, 'gallery.page_size');
+        $galleryColumns = $this->integer($values, 'gallery.columns');
 
         return [
             'api' => [
@@ -33,6 +34,7 @@ final class ConfigFile
             ],
             'gallery' => [
                 'pageSize' => min(max($galleryPageSize > 0 ? $galleryPageSize : 36, 1), 200),
+                'columns' => min(max($galleryColumns > 0 ? $galleryColumns : 4, 1), 12),
             ],
             'auth' => [
                 'passwordEnabled' => $this->passwordEnabled($values),
@@ -58,6 +60,7 @@ final class ConfigFile
         $values['usage']['token_multiplier'] = $this->positiveFloat($input, 'usage.tokenMultiplier', 'Коэффициент токенов');
         $values['gallery'] = is_array($values['gallery'] ?? null) ? $values['gallery'] : [];
         $values['gallery']['page_size'] = $this->boundedInteger($input, 'gallery.pageSize', 'Картинок за раз', 1, 200);
+        $values['gallery']['columns'] = $this->boundedInteger($input, 'gallery.columns', 'Картинок в ряд', 1, 12);
         $values['prompts']['chat'] = $this->requiredString($input, 'prompts.chat', 'Промпт обычного чата');
         $values['prompts']['image'] = $this->requiredString($input, 'prompts.image', 'Промпт картинок');
 

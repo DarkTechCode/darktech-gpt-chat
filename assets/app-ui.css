@@ -153,7 +153,7 @@
   padding: 12px;
   overflow: auto;
   align-content: start;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--gallery-columns, 4), minmax(0, 1fr));
 }
 
 .gallery-more {

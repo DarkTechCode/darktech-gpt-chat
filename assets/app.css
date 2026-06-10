@@ -13,6 +13,7 @@
   --shadow: 0 18px 50px rgb(0 0 0 / 35%);
   --sidebar-width: 400px;
   --gallery-width: 600px;
+  --gallery-columns: 4;
   --resize-handle-width: 6px;
 }
 

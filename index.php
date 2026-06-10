@@ -29,6 +29,14 @@ if ($galleryPageSize <= 0) {
 
 $galleryPageSize = min($galleryPageSize, 200);
 
+$galleryColumns = $config->integer('gallery.columns', 4);
+
+if ($galleryColumns <= 0) {
+    $galleryColumns = 4;
+}
+
+$galleryColumns = min($galleryColumns, 12);
+
 function h(string $value): string
 {
     return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -47,6 +55,7 @@ $boot = [
     'imageFormat' => $config->string('image.output_format', 'png'),
     'tokenMultiplier' => $tokenMultiplier,
     'galleryPageSize' => $galleryPageSize,
+    'galleryColumns' => $galleryColumns,
     'tokenConfigured' => $config->string('api.token') !== '' && $config->string('api.token') !== 'sk-...',
 ];
 ?>
@@ -84,7 +93,7 @@ $boot = [
             </form>
         </main>
     <?php else: ?>
-        <div class="app-shell" data-app-shell>
+        <div class="app-shell" style="--gallery-columns: <?= h((string) $galleryColumns); ?>;" data-app-shell>
             <aside class="sidebar">
                 <header class="sidebar-head">
                     <div class="brand-block">
@@ -241,6 +250,10 @@ $boot = [
                         <label class="field">
                             <span>Картинок за раз</span>
                             <input type="number" name="gallery.pageSize" min="1" max="200" step="1" required>
+                        </label>
+                        <label class="field">
+                            <span>Картинок в ряд</span>
+                            <input type="number" name="gallery.columns" min="1" max="12" step="1" required>
                         </label>
                     </section>
 
