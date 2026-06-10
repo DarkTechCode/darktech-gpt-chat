@@ -18,6 +18,7 @@ final class ConfigFile
     public function publicSettings(): array
     {
         $values = $this->read();
+        $galleryPageSize = $this->integer($values, 'gallery.page_size');
 
         return [
             'api' => [
@@ -29,6 +30,9 @@ final class ConfigFile
             ],
             'usage' => [
                 'tokenMultiplier' => $this->float($values, 'usage.token_multiplier'),
+            ],
+            'gallery' => [
+                'pageSize' => min(max($galleryPageSize > 0 ? $galleryPageSize : 36, 1), 200),
             ],
             'auth' => [
                 'passwordEnabled' => $this->passwordEnabled($values),
@@ -52,6 +56,8 @@ final class ConfigFile
         $values['api']['model'] = $this->requiredString($input, 'api.model', 'Модель');
         $values['api']['timeout_seconds'] = $this->positiveInteger($input, 'api.timeoutSeconds', 'Таймаут');
         $values['usage']['token_multiplier'] = $this->positiveFloat($input, 'usage.tokenMultiplier', 'Коэффициент токенов');
+        $values['gallery'] = is_array($values['gallery'] ?? null) ? $values['gallery'] : [];
+        $values['gallery']['page_size'] = $this->boundedInteger($input, 'gallery.pageSize', 'Картинок за раз', 1, 200);
         $values['prompts']['chat'] = $this->requiredString($input, 'prompts.chat', 'Промпт обычного чата');
         $values['prompts']['image'] = $this->requiredString($input, 'prompts.image', 'Промпт картинок');
 
@@ -130,6 +136,17 @@ final class ConfigFile
         }
 
         return (int) $value;
+    }
+
+    private function boundedInteger(array $input, string $path, string $label, int $min, int $max): int
+    {
+        $value = $this->positiveInteger($input, $path, $label);
+
+        if ($value < $min || $value > $max) {
+            throw new RuntimeException($label . ': укажите число от ' . $min . ' до ' . $max . '.');
+        }
+
+        return $value;
     }
 
     private function positiveFloat(array $input, string $path, string $label): float

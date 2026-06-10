@@ -21,6 +21,14 @@ if ($tokenMultiplier <= 0.0) {
     $tokenMultiplier = 4.0;
 }
 
+$galleryPageSize = $config->integer('gallery.page_size', 36);
+
+if ($galleryPageSize <= 0) {
+    $galleryPageSize = 36;
+}
+
+$galleryPageSize = min($galleryPageSize, 200);
+
 function h(string $value): string
 {
     return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -38,6 +46,7 @@ $boot = [
     'model' => $config->string('api.model', 'gpt-5.5'),
     'imageFormat' => $config->string('image.output_format', 'png'),
     'tokenMultiplier' => $tokenMultiplier,
+    'galleryPageSize' => $galleryPageSize,
     'tokenConfigured' => $config->string('api.token') !== '' && $config->string('api.token') !== 'sk-...',
 ];
 ?>
@@ -99,6 +108,8 @@ $boot = [
                 </footer>
             </aside>
 
+            <div class="resize-handle resize-handle-sidebar" data-resize-sidebar title="Изменить ширину списка чатов"></div>
+
             <main class="chat-panel">
                 <header class="topbar">
                     <div>
@@ -151,6 +162,8 @@ $boot = [
                 </form>
             </main>
 
+            <div class="resize-handle resize-handle-gallery" data-resize-gallery title="Изменить ширину галереи"></div>
+
             <aside class="gallery-panel">
                 <header class="gallery-head">
                     <div>
@@ -160,6 +173,9 @@ $boot = [
                     <button type="button" class="icon-button" data-refresh-gallery title="Обновить">↻</button>
                 </header>
                 <div class="gallery-grid" data-gallery></div>
+                <footer class="gallery-more" data-gallery-more hidden>
+                    <button type="button" class="ghost-button" data-load-gallery-more>Загрузить ещё</button>
+                </footer>
             </aside>
         </div>
 
@@ -221,6 +237,14 @@ $boot = [
                     </section>
 
                     <section class="settings-section">
+                        <h3>Галерея</h3>
+                        <label class="field">
+                            <span>Картинок за раз</span>
+                            <input type="number" name="gallery.pageSize" min="1" max="200" step="1" required>
+                        </label>
+                    </section>
+
+                    <section class="settings-section">
                         <h3>Промпты</h3>
                         <label class="field">
                             <span>Обычный чат</span>
@@ -262,6 +286,7 @@ $boot = [
     <script src="assets/errors.js"></script>
     <script src="assets/app.js"></script>
     <script src="assets/settings.js"></script>
+    <script src="assets/layout.js"></script>
 </body>
 
 </html>

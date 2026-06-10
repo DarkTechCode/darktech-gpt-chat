@@ -42,6 +42,7 @@
         setValue(form, 'api.model', settings.api && settings.api.model);
         setValue(form, 'api.timeoutSeconds', settings.api && settings.api.timeoutSeconds);
         setValue(form, 'usage.tokenMultiplier', settings.usage && settings.usage.tokenMultiplier);
+        setValue(form, 'gallery.pageSize', settings.gallery && settings.gallery.pageSize);
         setValue(form, 'prompts.chat', settings.prompts && settings.prompts.chat);
         setValue(form, 'prompts.image', settings.prompts && settings.prompts.image);
         setValue(form, 'auth.password', '');
@@ -69,6 +70,9 @@
             },
             usage: {
                 tokenMultiplier: value(form, 'usage.tokenMultiplier'),
+            },
+            gallery: {
+                pageSize: value(form, 'gallery.pageSize'),
             },
             prompts: {
                 chat: value(form, 'prompts.chat'),

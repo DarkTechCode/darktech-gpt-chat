@@ -148,9 +148,23 @@
 }
 
 .gallery-grid {
+  flex: 1;
+  min-height: 0;
   padding: 12px;
   overflow: auto;
+  align-content: start;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.gallery-more {
+  display: flex;
+  justify-content: center;
+  padding: 10px 12px 12px;
+  border-top: 1px solid #26272b;
+}
+
+.gallery-more .ghost-button {
+  width: 100%;
 }
 
 .image-strip-large {
@@ -248,6 +262,10 @@
     grid-row: 2;
     border-left: 0;
     border-top: 1px solid #26272b;
+  }
+
+  .resize-handle {
+    display: none;
   }
 }
 

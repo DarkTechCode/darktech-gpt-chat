@@ -111,32 +111,65 @@ final class ImageStorage
 
     public function listImages(array $contextByFile = []): array
     {
+        return $this->listImagePage($contextByFile, 0, PHP_INT_MAX)['images'];
+    }
+
+    public function listImagePage(array $contextByFile, int $offset, int $limit): array
+    {
+        $entries = $this->imageEntries();
+
+        usort($entries, static function (array $left, array $right): int {
+            $timeDiff = $right['modifiedAt'] <=> $left['modifiedAt'];
+
+            return $timeDiff !== 0 ? $timeDiff : strcmp(basename($right['path']), basename($left['path']));
+        });
+
+        $total = count($entries);
+        $slice = array_slice($entries, max(0, $offset), max(1, $limit));
         $images = [];
+
+        foreach ($slice as $entry) {
+            $images[] = $this->metaWithContext($entry['path'], $contextByFile);
+        }
+
+        return [
+            'images' => $images,
+            'total' => $total,
+        ];
+    }
+
+    private function imageEntries(): array
+    {
+        $entries = [];
 
         foreach (['png', 'jpg', 'jpeg', 'webp'] as $extension) {
             foreach (glob($this->directory . DIRECTORY_SEPARATOR . '*.' . $extension) ?: [] as $path) {
-                $meta = $this->meta($path, strpos(basename($path), 'ref-') === 0 ? 'reference' : 'generated');
-
-                if (isset($contextByFile[$meta['file']]) && is_array($contextByFile[$meta['file']])) {
-                    $context = $contextByFile[$meta['file']];
-                    $meta['chatId'] = $context['chatId'] ?? null;
-                    $meta['chatTitle'] = $context['chatTitle'] ?? null;
-
-                    if (isset($context['usage']) && is_array($context['usage'])) {
-                        $meta['usage'] = $context['usage'];
-                        $meta['usageScope'] = 'response';
-                    }
-                }
-
-                $images[] = $meta;
+                $entries[] = [
+                    'path' => $path,
+                    'modifiedAt' => (int) (filemtime($path) ?: 0),
+                ];
             }
         }
 
-        usort($images, static function (array $left, array $right): int {
-            return (int) $right['modifiedAt'] <=> (int) $left['modifiedAt'];
-        });
+        return $entries;
+    }
 
-        return $images;
+    private function metaWithContext(string $path, array $contextByFile): array
+    {
+        $meta = $this->meta($path, strpos(basename($path), 'ref-') === 0 ? 'reference' : 'generated');
+
+        if (isset($contextByFile[$meta['file']]) && is_array($contextByFile[$meta['file']])) {
+            $context = $contextByFile[$meta['file']];
+            $meta['chatId'] = $context['chatId'] ?? null;
+            $meta['chatTitle'] = $context['chatTitle'] ?? null;
+
+            if (isset($context['usage']) && is_array($context['usage'])) {
+                $meta['usage'] = $context['usage'];
+                $meta['usageScope'] = 'response';
+            }
+        }
+
+        return $meta;
     }
 
     private function normalizeFiles(array $files): array

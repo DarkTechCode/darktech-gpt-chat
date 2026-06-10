@@ -23,6 +23,11 @@ return [
         'token_multiplier' => 4,
     ],
 
+    'gallery' => [
+        'page_size' => 36,
+        'columns' => 4,
+    ],
+
     'image' => [
         'output_format' => 'png',
         'size' => null,

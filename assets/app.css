@@ -11,6 +11,9 @@
   --danger: #f23f42;
   --ok: #23a55a;
   --shadow: 0 18px 50px rgb(0 0 0 / 35%);
+  --sidebar-width: 400px;
+  --gallery-width: 600px;
+  --resize-handle-width: 6px;
 }
 
 * {
@@ -34,6 +37,11 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
+}
+
+body.is-resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 
 button,
@@ -198,16 +206,38 @@ p {
   height: 100dvh;
   min-height: 0;
   display: grid;
-  grid-template-columns: 400px minmax(0, 1fr) 600px;
+  grid-template-columns:
+    var(--sidebar-width)
+    var(--resize-handle-width)
+    minmax(0, 1fr)
+    var(--resize-handle-width)
+    var(--gallery-width);
   overflow: hidden;
 }
 
 .app-shell:not(.is-image-mode) {
-  grid-template-columns: 400px minmax(0, 1fr);
+  grid-template-columns:
+    var(--sidebar-width)
+    var(--resize-handle-width)
+    minmax(0, 1fr);
 }
 
-.app-shell:not(.is-image-mode) .gallery-panel {
+.app-shell:not(.is-image-mode) .gallery-panel,
+.app-shell:not(.is-image-mode) .resize-handle-gallery {
   display: none;
+}
+
+.resize-handle {
+  min-width: 0;
+  background: #26272b;
+  cursor: col-resize;
+  touch-action: none;
+  transition: background 0.12s ease;
+}
+
+.resize-handle:hover,
+.resize-handle.is-dragging {
+  background: var(--accent);
 }
 
 .sidebar,

@@ -5,6 +5,15 @@
         activeChat: null,
         gallery: [],
         galleryRefs: [],
+        galleryPagination: {
+            offset: 0,
+            limit: Number(boot.galleryPageSize) || 36,
+            count: 0,
+            total: 0,
+            hasMore: false,
+            nextOffset: null,
+        },
+        galleryLoadingMore: false,
         usage: null,
         mode: 'chat',
         pending: {},
@@ -51,6 +60,7 @@
         $('[data-ref-input]').addEventListener('change', handleRefsChange);
         window.ReferenceDrop.bind($('[data-composer]'), $('[data-ref-input]'), handleRefsChange, rejectRefs);
         $('[data-refresh-gallery]').addEventListener('click', refreshGallery);
+        $('[data-load-gallery-more]').addEventListener('click', loadMoreGallery);
         document.querySelectorAll('[data-close-modal]').forEach(function (node) {
             node.addEventListener('click', closeModal);
         });
@@ -176,7 +186,7 @@
             }
 
             await loadChatSummaries();
-            if (requestMode === 'image') { await loadGallery(); }
+            if (requestMode === 'image') { await loadGallery(0, false); }
         } catch (exception) {
             if (exception.payload && exception.payload.chat) {
                 if (state.activeChat && state.activeChat.id === exception.payload.chat.id) {
@@ -194,11 +204,45 @@
         }
     }
 
-    async function loadGallery() { const data = await request('api/gallery.php'); state.gallery = data.images || []; renderGallery(); }
+    async function loadGallery(offset, append) {
+        const galleryOffset = offset === undefined ? 0 : offset;
+        const params = new URLSearchParams();
+        params.set('offset', String(galleryOffset));
+
+        if (append) {
+            params.set('limit', String(state.galleryPagination.limit || 36));
+        }
+
+        const data = await request('api/gallery.php?' + params.toString());
+        const images = data.images || [];
+        state.gallery = append ? state.gallery.concat(images) : images;
+        state.galleryPagination = normalizeGalleryPagination(data.pagination, galleryOffset, images.length);
+        renderGallery();
+    }
+
+    async function loadMoreGallery() {
+        const pagination = state.galleryPagination;
+
+        if (!pagination.hasMore || pagination.nextOffset === null || state.galleryLoadingMore) {
+            return;
+        }
+
+        state.galleryLoadingMore = true;
+        renderGalleryMore();
+
+        try {
+            await loadGallery(pagination.nextOffset, true);
+        } catch (exception) {
+            appendClientError('Не удалось загрузить ещё картинки.', exception);
+        } finally {
+            state.galleryLoadingMore = false;
+            renderGalleryMore();
+        }
+    }
 
     async function refreshGallery() {
         try {
-            await loadGallery();
+            await loadGallery(0, false);
         } catch (exception) {
             appendClientError('Не удалось загрузить галерею.', exception);
         }
@@ -273,6 +317,26 @@
         grid.innerHTML = '';
 
         state.gallery.forEach(function (image) { grid.append(imageCard(image, false, null, false)); });
+        renderGalleryMore();
+    }
+
+    function renderGalleryMore() {
+        const holder = $('[data-gallery-more]');
+        const button = $('[data-load-gallery-more]');
+
+        if (!holder || !button) {
+            return;
+        }
+
+        holder.hidden = !state.galleryPagination.hasMore && !state.galleryLoadingMore;
+        button.disabled = state.galleryLoadingMore;
+        button.textContent = state.galleryLoadingMore ? 'Загрузка...' : 'Загрузить ещё';
+
+        if (state.galleryPagination.total > 0) {
+            button.title = 'Показано ' + state.gallery.length + ' из ' + state.galleryPagination.total;
+        } else {
+            button.title = '';
+        }
     }
 
     function imageCard(image, isLarge, chatId, showUsage) {
@@ -720,6 +784,31 @@
     }
 
     function sendLabel() { return state.mode === 'image' ? 'Сгенерировать' : 'Отправить'; }
+
+    function normalizeGalleryPagination(pagination, offset, count) {
+        const nextOffset = pagination && pagination.nextOffset !== null && pagination.nextOffset !== undefined
+            ? positiveNumber(pagination.nextOffset, null)
+            : null;
+
+        return {
+            offset: positiveNumber(pagination && pagination.offset, offset),
+            limit: positiveNumber(pagination && pagination.limit, Number(boot.galleryPageSize) || 36),
+            count: positiveNumber(pagination && pagination.count, count),
+            total: positiveNumber(pagination && pagination.total, state.gallery.length),
+            hasMore: Boolean(pagination && pagination.hasMore),
+            nextOffset: nextOffset,
+        };
+    }
+
+    function positiveNumber(value, fallback) {
+        if (value === null || value === undefined || value === '') {
+            return fallback;
+        }
+
+        const number = Number(value);
+
+        return Number.isFinite(number) && number >= 0 ? number : fallback;
+    }
 
     function child(tag, text, className) {
         const node = document.createElement(tag);
