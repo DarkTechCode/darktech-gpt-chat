@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 return [
     'auth' => [
-        'password' => 'neurogate',
+        'password' => '',
         'password_hash' => null,
         'session_name' => 'gpt_chat_session',
     ],
