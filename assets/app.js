@@ -272,10 +272,10 @@
         const grid = $('[data-gallery]');
         grid.innerHTML = '';
 
-        state.gallery.forEach(function (image) { grid.append(imageCard(image, false, null)); });
+        state.gallery.forEach(function (image) { grid.append(imageCard(image, false, null, false)); });
     }
 
-    function imageCard(image, isLarge, chatId) {
+    function imageCard(image, isLarge, chatId, showUsage) {
         const modalImage = imageForModal(image, chatId);
         const card = document.createElement('button');
         card.type = 'button';
@@ -283,12 +283,12 @@
         card.addEventListener('click', function () { openModal(modalImage); });
 
         const img = document.createElement('img');
-        img.alt = image.file || '';
+        img.alt = window.UsageFormatter.imageName(image);
         img.loading = 'lazy';
         if (isLarge) { img.addEventListener('load', scrollMessagesToBottom); }
         img.src = image.url;
         card.append(img);
-        card.append(child('span', window.UsageFormatter.imageLabel(image)));
+        card.append(child('span', showUsage === false ? window.UsageFormatter.imageName(image) : window.UsageFormatter.imageLabel(image)));
 
         return card;
     }
@@ -342,8 +342,8 @@
         modal.dataset.path = image.path || image.url;
         modal.dataset.url = image.url;
         modal.dataset.chatId = image.chatId || '';
-        $('[data-modal-title]').textContent = image.file || 'image';
-        $('[data-modal-meta]').textContent = (image.width || 0) + 'x' + (image.height || 0) + ' · ' + bytes(image.bytes || 0) + ' · ' + window.UsageFormatter.full(image.usage);
+        $('[data-modal-title]').textContent = window.UsageFormatter.imageName(image);
+        $('[data-modal-meta]').textContent = modalMeta(image);
         $('[data-modal-image]').src = image.url;
         $('[data-download]').href = image.url;
         $('[data-open-image]').href = image.url;
@@ -364,6 +364,22 @@
         const url = new URL($('[data-modal]').dataset.url, window.location.href).href;
         await navigator.clipboard.writeText(url);
         setStatus('Ссылка скопирована');
+    }
+
+    function modalMeta(image) {
+        const parts = [
+            (image.width || 0) + 'x' + (image.height || 0),
+            bytes(image.bytes || 0),
+        ];
+        const generatedAt = window.UsageFormatter.imageDateTime(image);
+
+        if (generatedAt !== '') {
+            parts.push(generatedAt);
+        }
+
+        parts.push(window.UsageFormatter.full(image.usage));
+
+        return parts.join(' · ');
     }
 
     function addModalReference() {
