@@ -2,6 +2,8 @@
 
 Личный PHP/JS интерфейс для OpenAI-compatible Responses API. Его можно загрузить на свой сервер и использовать как приватный ChatGPT-подобный чат с генерацией изображений, референсами, галереей и настройками из браузера.
 
+[Скачать ZIP-архив](https://github.com/DarkTechCode/darktech-gpt-chat/archive/refs/heads/main.zip)
+
 ## Скриншоты
 
 ![Режим чата](screenshots/darktech-gpt-1.png)
@@ -31,7 +33,7 @@
 
 ## Настройка
 
-1. Загрузите файлы проекта на сервер с PHP 7.4+ (рекомендуется PHP 8+).
+1. Скачайте [ZIP-архив](https://github.com/DarkTechCode/darktech-gpt-chat/archive/refs/heads/main.zip) и загрузите файлы проекта на сервер с PHP 7.4+ (рекомендуется PHP 8+).
 2. Убедитесь, что PHP может записывать в `config.php`, `data` и `img`.
 3. Откройте `index.php` в браузере.
 4. Войдите с паролем из `config.php` - по умолчанию это `neurogate`.
