@@ -467,6 +467,125 @@ p {
   border: 1px solid var(--danger);
 }
 
+.message.assistant .message-markdown {
+  width: 100%;
+  white-space: normal;
+}
+
+.message-markdown > :first-child {
+  margin-top: 0;
+}
+
+.message-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.message-markdown p,
+.message-markdown ul,
+.message-markdown ol,
+.message-markdown blockquote,
+.message-markdown table,
+.message-markdown pre[class*="language-"] {
+  margin: 0 0 12px;
+}
+
+.message-markdown ul,
+.message-markdown ol {
+  padding-left: 22px;
+}
+
+.message-markdown li + li {
+  margin-top: 4px;
+}
+
+.message-markdown h1,
+.message-markdown h2,
+.message-markdown h3,
+.message-markdown h4 {
+  margin: 16px 0 8px;
+  line-height: 1.2;
+}
+
+.message-markdown h1 {
+  font-size: 22px;
+}
+
+.message-markdown h2 {
+  font-size: 19px;
+}
+
+.message-markdown h3 {
+  font-size: 17px;
+}
+
+.message-markdown h4 {
+  font-size: 15px;
+}
+
+.message-markdown a {
+  color: #9bb2ff;
+}
+
+.message-markdown blockquote {
+  padding-left: 12px;
+  border-left: 3px solid var(--border);
+  color: #c7cbd1;
+}
+
+.message-markdown code:not([class*="language-"]) {
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: rgb(0 0 0 / 26%);
+  color: #f1f3f5;
+  font: 13px/1.45 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  overflow-wrap: anywhere;
+}
+
+.message-markdown pre[class*="language-"] {
+  max-width: 100%;
+  padding-top: 13px;
+  padding-bottom: 13px;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%);
+  font: 13px/1.55 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  overflow: auto;
+  overflow-wrap: normal;
+  tab-size: 2;
+}
+
+.message-markdown pre[class*="language-"] code {
+  font: inherit;
+  overflow-wrap: normal;
+  white-space: pre;
+}
+
+.message-markdown .line-numbers .line-numbers-rows {
+  border-right-color: rgb(255 255 255 / 14%);
+}
+
+.message-markdown .line-numbers-rows > span::before {
+  color: #767d8b;
+}
+
+.message-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: auto;
+}
+
+.message-markdown th,
+.message-markdown td {
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.message-markdown th {
+  background: rgb(255 255 255 / 5%);
+}
+
 .error-details {
   width: fit-content;
   max-width: 100%;

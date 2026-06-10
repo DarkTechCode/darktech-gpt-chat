@@ -289,7 +289,7 @@
             const article = document.createElement('article');
             article.className = 'message ' + message.role + (message.error ? ' is-error' : '');
             article.append(child('div', roleName(message.role) + ' · ' + formatDate(message.createdAt), 'message-head'));
-            article.append(child('div', message.content || '', 'bubble'));
+            article.append(messageBubble(message));
             if (message.errorDetails) { article.append(window.ChatErrors.panel(message.errorDetails)); }
 
             if (message.images && message.images.length) { article.append(imageStrip(message.images, message.role, state.activeChat.id)); }
@@ -298,6 +298,20 @@
         });
 
         scrollMessagesToBottom();
+    }
+
+    function messageBubble(message) {
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble';
+
+        if (message.role === 'assistant' && window.ChatMarkdown) {
+            window.ChatMarkdown.render(bubble, message.content || '');
+            return bubble;
+        }
+
+        bubble.textContent = message.content || '';
+
+        return bubble;
     }
 
     function imageStrip(images, role, chatId) {

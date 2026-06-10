@@ -66,6 +66,8 @@ $boot = [
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= h($projectName); ?></title>
+    <link rel="stylesheet" href="assets/vendor/prism/prism-tomorrow.min.css">
+    <link rel="stylesheet" href="assets/vendor/prism/prism-line-numbers.min.css">
     <link rel="stylesheet" href="assets/app.css">
     <link rel="stylesheet" href="assets/app-ui.css">
     <meta name="author" content="Dark Wizard">
@@ -292,11 +294,28 @@ $boot = [
         </div>
     <?php endif; ?>
 
+    <script src="assets/vendor/marked/marked.min.js"></script>
+    <script src="assets/vendor/dompurify.min.js"></script>
+    <script>
+        window.Prism = window.Prism || {};
+        window.Prism.manual = true;
+    </script>
+    <script src="assets/vendor/prism/prism.min.js"></script>
+    <script src="assets/vendor/prism/prism-markup.min.js"></script>
+    <script src="assets/vendor/prism/prism-markup-templating.min.js"></script>
+    <script src="assets/vendor/prism/prism-clike.min.js"></script>
+    <script src="assets/vendor/prism/prism-php.min.js"></script>
+    <script src="assets/vendor/prism/prism-javascript.min.js"></script>
+    <script src="assets/vendor/prism/prism-css.min.js"></script>
+    <script src="assets/vendor/prism/prism-json.min.js"></script>
+    <script src="assets/vendor/prism/prism-bash.min.js"></script>
+    <script src="assets/vendor/prism/prism-line-numbers.min.js"></script>
     <script src="assets/timer.js"></script>
     <script src="assets/usage.js"></script>
     <script src="assets/refs.js"></script>
     <script src="assets/draft.js"></script>
     <script src="assets/errors.js"></script>
+    <script src="assets/markdown.js"></script>
     <script src="assets/app.js"></script>
     <script src="assets/settings.js"></script>
     <script src="assets/layout.js"></script>
