@@ -1,6 +1,6 @@
 # DarkTech GPT Chat
 
-Минимальный PHP/JS чат через Responses API Neurogate.
+Полноценный PHP/JS чат через API OpenAI Compatible (Responses API).
 
 По умолчанию интерфейс работает как обычный текстовый чат. Для генерации или редактирования изображений включите режим `Картинки`.
 
@@ -20,7 +20,7 @@
 
 После загрузки на хостинг открывайте `index.php`.
 
-Для Neurogate `api.stream` должен оставаться `true`: backend отклоняет нестриминговые Responses-запросы.
+Используется Responses API: `api.stream` должен оставаться `true`: backend отклоняет нестриминговые Responses-запросы.
 
 ## Где хранятся данные
 

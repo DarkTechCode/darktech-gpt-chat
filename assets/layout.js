@@ -7,6 +7,39 @@
     };
     let settings = load();
 
+    window.ChatLayout = {
+        current: function () {
+            return {
+                sidebar: currentWidth('sidebar'),
+                gallery: currentWidth('gallery'),
+            };
+        },
+        defaults: function () {
+            return defaultSettings();
+        },
+        limits: function () {
+            return {
+                sidebar: Object.assign({}, limits.sidebar),
+                gallery: Object.assign({}, limits.gallery),
+            };
+        },
+        save: function (next) {
+            settings.sidebar = numeric(next && next.sidebar, limits.sidebar.fallback);
+            settings.gallery = numeric(next && next.gallery, limits.gallery.fallback);
+            applyToShell();
+            save();
+
+            return this.current();
+        },
+        reset: function () {
+            settings = defaultSettings();
+            applyToShell();
+            save();
+
+            return this.current();
+        },
+    };
+
     document.addEventListener('DOMContentLoaded', function () {
         const shell = $('[data-app-shell]');
 
@@ -69,6 +102,14 @@
         shell.style.setProperty('--gallery-width', settings.gallery + 'px');
     }
 
+    function applyToShell() {
+        const shell = $('[data-app-shell]');
+
+        if (shell) {
+            apply(shell);
+        }
+    }
+
     function constrained(shell, side, value) {
         const maxByViewport = availableMax(shell, side);
         const max = Math.max(limits[side].min, Math.min(limits[side].max, maxByViewport));
@@ -111,15 +152,19 @@
             const parsed = JSON.parse(localStorage.getItem(key) || '{}');
 
             return {
-                sidebar: Number(parsed.sidebar) || limits.sidebar.fallback,
-                gallery: Number(parsed.gallery) || limits.gallery.fallback,
+                sidebar: numeric(parsed.sidebar, limits.sidebar.fallback),
+                gallery: numeric(parsed.gallery, limits.gallery.fallback),
             };
         } catch (_exception) {
-            return {
-                sidebar: limits.sidebar.fallback,
-                gallery: limits.gallery.fallback,
-            };
+            return defaultSettings();
         }
+    }
+
+    function defaultSettings() {
+        return {
+            sidebar: limits.sidebar.fallback,
+            gallery: limits.gallery.fallback,
+        };
     }
 
     function save() {
@@ -132,6 +177,12 @@
 
     function clamp(value, min, max) {
         return Math.min(max, Math.max(min, value));
+    }
+
+    function numeric(value, fallback) {
+        const number = Number(value);
+
+        return Number.isFinite(number) && number > 0 ? Math.round(number) : fallback;
     }
 
     function $(selector) {

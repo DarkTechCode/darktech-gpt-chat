@@ -10,7 +10,7 @@ return [
     ],
 
     'api' => [
-        'base_url' => 'https://api.neurogate.space/v1',
+        'base_url' => '',
         'token' => 'sk-...',
         'model' => 'gpt-5.5',
         'timeout_seconds' => 300,

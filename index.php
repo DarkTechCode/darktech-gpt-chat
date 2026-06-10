@@ -66,6 +66,30 @@ $boot = [
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= h($projectName); ?></title>
+    <script>
+        (function () {
+            var defaults = { theme: 'dark', fontSize: 14 };
+            var settings = {};
+
+            try {
+                settings = JSON.parse(localStorage.getItem('darktech-gpt.appearance') || '{}');
+            } catch (_exception) {
+                settings = {};
+            }
+
+            var theme = ['dark', 'light', 'system'].indexOf(settings.theme) === -1
+                ? defaults.theme
+                : settings.theme;
+            var fontSize = Number(settings.fontSize) || defaults.fontSize;
+            var resolvedTheme = theme === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+                ? 'light'
+                : theme === 'system' ? 'dark' : theme;
+
+            document.documentElement.dataset.theme = resolvedTheme;
+            document.documentElement.dataset.themePreference = theme;
+            document.documentElement.style.setProperty('--app-font-size', Math.min(20, Math.max(12, Math.round(fontSize))) + 'px');
+        }());
+    </script>
     <link rel="stylesheet" href="assets/vendor/prism/prism-tomorrow.min.css">
     <link rel="stylesheet" href="assets/vendor/prism/prism-line-numbers.min.css">
     <link rel="stylesheet" href="assets/app.css">
@@ -123,7 +147,7 @@ $boot = [
 
             <main class="chat-panel">
                 <header class="topbar">
-                    <div>
+                    <div data-chat-heading>
                         <p class="eyebrow">Responses API</p>
                         <div class="title-row">
                             <h1 data-chat-title>Новый чат</h1>
@@ -131,20 +155,134 @@ $boot = [
                         </div>
                         <p class="token-summary" data-chat-usage>токены: нет данных</p>
                     </div>
+                    <div data-settings-heading hidden>
+                        <p class="eyebrow">config.php</p>
+                        <div class="title-row">
+                            <h1>Настройки</h1>
+                        </div>
+                        <p class="token-summary">Параметры приложения</p>
+                    </div>
                     <div class="topbar-actions">
-                        <button type="button" class="ghost-button" data-open-settings>Настройки</button>
-                        <button type="button" class="ghost-button mode-button" data-image-mode aria-pressed="false">Картинки</button>
-                        <span class="status-pill" data-status>Готов</span>
+                        <button type="button" class="icon-button theme-toggle-button" data-chat-action data-theme-toggle title="Светлая тема" aria-label="Светлая тема">☀</button>
+                        <button type="button" class="ghost-button" data-chat-action data-open-settings>Настройки</button>
+                        <button type="button" class="ghost-button" data-settings-action data-close-settings hidden>К чату</button>
+                        <button type="button" class="ghost-button mode-button" data-chat-action data-image-mode aria-pressed="false">Картинки</button>
+                        <span class="status-pill" data-chat-action data-status>Готов</span>
                     </div>
                 </header>
 
                 <?php if (!$boot['tokenConfigured']): ?>
-                    <div class="config-warning">В config.php нужно указать api.token.</div>
+                    <div class="config-warning" data-chat-region>В config.php нужно указать api.token.</div>
                 <?php endif; ?>
 
-                <section class="messages" data-messages></section>
+                <section class="settings-page" data-settings-page hidden>
+                    <nav class="settings-nav" aria-label="Разделы настроек">
+                        <a href="#settings-appearance" data-settings-nav>Оформление</a>
+                        <a href="#settings-api" data-settings-nav>API</a>
+                        <a href="#settings-prompts" data-settings-nav>Промпты</a>
+                        <a href="#settings-auth" data-settings-nav>Вход</a>
+                    </nav>
+                    <div class="settings-content">
+                        <form class="settings-form" data-settings-form>
+                            <section class="settings-section" id="settings-appearance">
+                                <h3>Оформление</h3>
+                                <label class="field">
+                                    <span>Тема</span>
+                                    <select name="appearance.theme">
+                                        <option value="dark">Темная</option>
+                                        <option value="light">Светлая</option>
+                                        <option value="system">Системная</option>
+                                    </select>
+                                </label>
+                                <label class="field">
+                                    <span>Размер шрифта, px</span>
+                                    <input type="number" name="appearance.fontSize" min="12" max="20" step="1">
+                                </label>
+                                <div class="settings-grid">
+                                    <label class="field">
+                                        <span>Ширина списка чатов, px</span>
+                                        <input type="number" name="appearance.sidebarWidth" min="260" max="1920" step="10">
+                                    </label>
+                                    <label class="field">
+                                        <span>Ширина галереи, px</span>
+                                        <input type="number" name="appearance.galleryWidth" min="320" max="2460" step="10">
+                                    </label>
+                                </div>
+                                <button type="button" class="ghost-button settings-reset-button" data-reset-appearance>Сбросить оформление</button>
 
-                <form class="composer" data-composer enctype="multipart/form-data">
+                                <h4 class="settings-subtitle">Галерея</h4>
+                                <label class="field">
+                                    <span>Картинок за раз</span>
+                                    <input type="number" name="gallery.pageSize" min="1" max="200" step="1" required>
+                                </label>
+                                <label class="field">
+                                    <span>Картинок в ряд</span>
+                                    <input type="number" name="gallery.columns" min="1" max="12" step="1" required>
+                                </label>
+                            </section>
+
+                            <section class="settings-section" id="settings-api">
+                                <h3>API</h3>
+                                <label class="field">
+                                    <span>API URL</span>
+                                    <input type="url" name="api.baseUrl" required>
+                                </label>
+                                <label class="field">
+                                    <span>API ключ</span>
+                                    <input type="password" name="api.token" autocomplete="off" placeholder="Оставьте пустым, чтобы не менять">
+                                </label>
+                                <p class="settings-note" data-token-state></p>
+                                <label class="field">
+                                    <span>Модель</span>
+                                    <input type="text" name="api.model" required>
+                                </label>
+                                <label class="field">
+                                    <span>Таймаут, секунд</span>
+                                    <input type="number" name="api.timeoutSeconds" min="1" step="1" required>
+                                </label>
+                                <label class="field">
+                                    <span>Коэффициент токенов</span>
+                                    <input type="number" name="usage.tokenMultiplier" min="0.01" step="0.01" required>
+                                </label>
+                            </section>
+
+                            <section class="settings-section" id="settings-prompts">
+                                <h3>Промпты</h3>
+                                <label class="field">
+                                    <span>Обычный чат</span>
+                                    <textarea name="prompts.chat" rows="5" required></textarea>
+                                </label>
+                                <label class="field">
+                                    <span>Картинки</span>
+                                    <textarea name="prompts.image" rows="5" required></textarea>
+                                </label>
+                            </section>
+
+                            <section class="settings-section" id="settings-auth">
+                                <h3>Вход</h3>
+                                <p class="settings-note" data-password-state></p>
+                                <label class="field">
+                                    <span>Новый пароль</span>
+                                    <input type="password" name="auth.password" autocomplete="new-password" placeholder="Оставьте пустым, чтобы не менять">
+                                </label>
+                                <label class="check-field">
+                                    <input type="checkbox" name="auth.disablePassword" value="1">
+                                    <span>Отключить пароль для входа</span>
+                                </label>
+                            </section>
+
+                            <p class="form-error" data-settings-error hidden></p>
+                            <footer>
+                                <button type="button" class="ghost-button" data-close-settings>Отмена</button>
+                                <button type="submit" class="primary-button" data-save-settings>Сохранить</button>
+                            </footer>
+                        </form>
+                    </div>
+                </section>
+
+                <section class="messages" data-chat-region data-messages></section>
+
+                <form class="composer" data-chat-region data-composer enctype="multipart/form-data">
                     <input type="hidden" name="mode" value="chat" data-mode>
                     <div class="refs-tray" data-refs-tray hidden></div>
                     <textarea name="prompt" data-prompt rows="3" placeholder="Напишите сообщение..." required></textarea>
@@ -211,87 +349,6 @@ $boot = [
             </section>
         </div>
 
-        <div class="modal" data-settings-modal hidden>
-            <div class="modal-backdrop" data-close-settings></div>
-            <section class="modal-card settings-card">
-                <header>
-                    <div>
-                        <h2>Настройки</h2>
-                        <p>config.php</p>
-                    </div>
-                    <button type="button" class="ghost-button" data-close-settings>Закрыть</button>
-                </header>
-                <form class="settings-form" data-settings-form>
-                    <section class="settings-section">
-                        <h3>API</h3>
-                        <label class="field">
-                            <span>API URL</span>
-                            <input type="url" name="api.baseUrl" required>
-                        </label>
-                        <label class="field">
-                            <span>API ключ</span>
-                            <input type="password" name="api.token" autocomplete="off" placeholder="Оставьте пустым, чтобы не менять">
-                        </label>
-                        <p class="settings-note" data-token-state></p>
-                        <label class="field">
-                            <span>Модель</span>
-                            <input type="text" name="api.model" required>
-                        </label>
-                        <label class="field">
-                            <span>Таймаут, секунд</span>
-                            <input type="number" name="api.timeoutSeconds" min="1" step="1" required>
-                        </label>
-                        <label class="field">
-                            <span>Коэффициент токенов</span>
-                            <input type="number" name="usage.tokenMultiplier" min="0.01" step="0.01" required>
-                        </label>
-                    </section>
-
-                    <section class="settings-section">
-                        <h3>Галерея</h3>
-                        <label class="field">
-                            <span>Картинок за раз</span>
-                            <input type="number" name="gallery.pageSize" min="1" max="200" step="1" required>
-                        </label>
-                        <label class="field">
-                            <span>Картинок в ряд</span>
-                            <input type="number" name="gallery.columns" min="1" max="12" step="1" required>
-                        </label>
-                    </section>
-
-                    <section class="settings-section">
-                        <h3>Промпты</h3>
-                        <label class="field">
-                            <span>Обычный чат</span>
-                            <textarea name="prompts.chat" rows="5" required></textarea>
-                        </label>
-                        <label class="field">
-                            <span>Картинки</span>
-                            <textarea name="prompts.image" rows="5" required></textarea>
-                        </label>
-                    </section>
-
-                    <section class="settings-section">
-                        <h3>Вход</h3>
-                        <p class="settings-note" data-password-state></p>
-                        <label class="field">
-                            <span>Новый пароль</span>
-                            <input type="password" name="auth.password" autocomplete="new-password" placeholder="Оставьте пустым, чтобы не менять">
-                        </label>
-                        <label class="check-field">
-                            <input type="checkbox" name="auth.disablePassword" value="1">
-                            <span>Отключить пароль для входа</span>
-                        </label>
-                    </section>
-
-                    <p class="form-error" data-settings-error hidden></p>
-                    <footer>
-                        <button type="button" class="ghost-button" data-close-settings>Отмена</button>
-                        <button type="submit" class="primary-button" data-save-settings>Сохранить</button>
-                    </footer>
-                </form>
-            </section>
-        </div>
     <?php endif; ?>
 
     <script src="assets/vendor/marked/marked.min.js"></script>
@@ -316,6 +373,7 @@ $boot = [
     <script src="assets/draft.js"></script>
     <script src="assets/errors.js"></script>
     <script src="assets/markdown.js"></script>
+    <script src="assets/appearance.js"></script>
     <script src="assets/app.js"></script>
     <script src="assets/settings.js"></script>
     <script src="assets/layout.js"></script>

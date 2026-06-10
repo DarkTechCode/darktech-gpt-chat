@@ -50,7 +50,7 @@
     }
 
     function bindApp() {
-        $('[data-new-chat]').addEventListener('click', createChat);
+        $('[data-new-chat]').addEventListener('click', createChatFromButton);
         if ($('[data-logout]')) { $('[data-logout]').addEventListener('click', logout); }
         $('[data-composer]').addEventListener('submit', generate);
         $('[data-rename-chat]').addEventListener('click', renameActiveChat);
@@ -98,6 +98,14 @@
         state.chats = data.chats || [];
         state.usage = data.usage || null;
         renderSidebar();
+    }
+
+    async function createChatFromButton() {
+        const chat = await createChat();
+
+        if (chat) {
+            focusPrompt();
+        }
     }
 
     async function openChat(chatId) {
@@ -278,6 +286,7 @@
         title.textContent = state.activeChat ? state.activeChat.title : 'Новый чат';
         $('[data-chat-usage]').textContent = state.activeChat ? window.UsageFormatter.full(state.activeChat.usage) : 'токены: нет данных';
         $('[data-rename-chat]').disabled = !state.activeChat;
+        window.PromptDraft.setChat(state.activeChat ? state.activeChat.id : null);
         renderBusyState();
 
         if (!state.activeChat || !state.activeChat.messages.length) {
@@ -852,6 +861,14 @@
     }
 
     function fileName(path) { return String(path).split('/').pop(); }
+
+    function focusPrompt() {
+        const prompt = $('[data-prompt]');
+
+        if (prompt) {
+            prompt.focus();
+        }
+    }
 
     function $(selector) { return document.querySelector(selector); }
 }());

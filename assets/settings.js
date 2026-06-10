@@ -2,9 +2,10 @@
     const boot = window.GPT_CHAT_APP || {};
 
     document.addEventListener('DOMContentLoaded', function () {
-        const modal = $('[data-settings-modal]');
+        const page = $('[data-settings-page]');
+        const form = $('[data-settings-form]');
 
-        if (!modal) {
+        if (!page || !form) {
             return;
         }
 
@@ -16,12 +17,24 @@
             button.addEventListener('click', closeSettings);
         });
 
-        $('[data-settings-form]').addEventListener('submit', saveSettings);
+        document.querySelectorAll('[data-settings-nav]').forEach(function (link) {
+            link.addEventListener('click', scrollToSettingsSection);
+        });
+
+        $('[data-reset-appearance]').addEventListener('click', resetAppearance);
+        document.addEventListener('click', closeSettingsFromNavigation);
+        form.addEventListener('submit', saveSettings);
     });
 
-    async function openSettings() {
+    async function openSettings(event) {
+        if (event) {
+            event.preventDefault();
+        }
+
         setSettingsError('');
-        $('[data-settings-modal]').hidden = false;
+        showSettings();
+        fillAppearance($('[data-settings-form]'));
+        setActiveNav('settings-appearance');
 
         try {
             const data = await request('api/settings.php');
@@ -32,7 +45,83 @@
     }
 
     function closeSettings() {
-        $('[data-settings-modal]').hidden = true;
+        const page = $('[data-settings-page]');
+
+        if (!page || page.hidden) {
+            return;
+        }
+
+        page.hidden = true;
+        setNodesHidden('[data-settings-heading]', true);
+        setNodesHidden('[data-settings-action]', true);
+        setNodesHidden('[data-chat-heading]', false);
+        setNodesHidden('[data-chat-action]', false);
+        setNodesHidden('[data-chat-region]', false);
+    }
+
+    function showSettings() {
+        const page = $('[data-settings-page]');
+
+        if (!page) {
+            return;
+        }
+
+        setNodesHidden('[data-chat-region]', true);
+        setNodesHidden('[data-chat-heading]', true);
+        setNodesHidden('[data-chat-action]', true);
+        setNodesHidden('[data-settings-heading]', false);
+        setNodesHidden('[data-settings-action]', false);
+        page.hidden = false;
+
+        const content = $('.settings-content');
+
+        if (content) {
+            content.scrollTop = 0;
+        }
+    }
+
+    function closeSettingsFromNavigation(event) {
+        if (!isSettingsOpen()) {
+            return;
+        }
+
+        if (event.target.closest('[data-new-chat], .chat-item')) {
+            closeSettings();
+        }
+    }
+
+    function scrollToSettingsSection(event) {
+        event.preventDefault();
+
+        const id = event.currentTarget.getAttribute('href').slice(1);
+        const section = document.getElementById(id);
+
+        if (!section) {
+            return;
+        }
+
+        section.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        setActiveNav(id);
+    }
+
+    function setActiveNav(id) {
+        document.querySelectorAll('[data-settings-nav]').forEach(function (link) {
+            const active = link.getAttribute('href') === '#' + id;
+            link.classList.toggle('is-active', active);
+            link.setAttribute('aria-current', active ? 'true' : 'false');
+        });
+    }
+
+    function setNodesHidden(selector, hidden) {
+        document.querySelectorAll(selector).forEach(function (node) {
+            node.hidden = hidden;
+        });
+    }
+
+    function isSettingsOpen() {
+        const page = $('[data-settings-page]');
+
+        return Boolean(page && !page.hidden);
     }
 
     function fillSettings(settings) {
@@ -97,12 +186,57 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
             });
+            saveAppearance(form);
             window.location.reload();
         } catch (exception) {
             setSettingsError(exception.message);
         } finally {
             button.disabled = false;
         }
+    }
+
+    function fillAppearance(form) {
+        const appearance = window.ChatAppearance
+            ? window.ChatAppearance.current()
+            : { theme: 'dark', fontSize: 14 };
+        const layout = window.ChatLayout
+            ? window.ChatLayout.current()
+            : { sidebar: 400, gallery: 600 };
+
+        setValue(form, 'appearance.theme', appearance.theme);
+        setValue(form, 'appearance.fontSize', appearance.fontSize);
+        setValue(form, 'appearance.sidebarWidth', layout.sidebar);
+        setValue(form, 'appearance.galleryWidth', layout.gallery);
+    }
+
+    function saveAppearance(form) {
+        if (window.ChatAppearance) {
+            window.ChatAppearance.save({
+                theme: value(form, 'appearance.theme'),
+                fontSize: value(form, 'appearance.fontSize'),
+            });
+        }
+
+        if (window.ChatLayout) {
+            window.ChatLayout.save({
+                sidebar: value(form, 'appearance.sidebarWidth'),
+                gallery: value(form, 'appearance.galleryWidth'),
+            });
+        }
+    }
+
+    function resetAppearance(event) {
+        event.preventDefault();
+
+        if (window.ChatAppearance) {
+            window.ChatAppearance.reset();
+        }
+
+        if (window.ChatLayout) {
+            window.ChatLayout.reset();
+        }
+
+        fillAppearance($('[data-settings-form]'));
     }
 
     async function request(url, options) {

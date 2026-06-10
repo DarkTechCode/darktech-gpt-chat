@@ -35,7 +35,7 @@
   gap: 10px;
   align-self: end;
   padding: 12px 18px max(12px, env(safe-area-inset-bottom));
-  border-top: 1px solid #26272b;
+  border-top: 1px solid var(--line);
   background: var(--bg);
   position: relative;
 }
@@ -43,7 +43,7 @@
 .composer.is-dragover {
   outline: 2px solid var(--accent);
   outline-offset: -6px;
-  background: #34374a;
+  background: var(--dragover-bg);
 }
 
 .composer textarea {
@@ -72,7 +72,7 @@
 
 .mode-button.is-active {
   background: var(--accent);
-  color: white;
+  color: var(--accent-text);
 }
 
 .mode-button:disabled {
@@ -115,8 +115,8 @@
 
 .ratio-option input:checked + span {
   border-color: var(--accent);
-  background: #3b428a;
-  color: white;
+  background: var(--choice-active-bg);
+  color: var(--choice-active-text);
 }
 
 .composer-actions {
@@ -160,7 +160,7 @@
   display: flex;
   justify-content: center;
   padding: 10px 12px 12px;
-  border-top: 1px solid #26272b;
+  border-top: 1px solid var(--line);
 }
 
 .gallery-more .ghost-button {
@@ -202,7 +202,7 @@
 .modal-backdrop {
   position: absolute;
   inset: 0;
-  background: rgb(0 0 0 / 70%);
+  background: var(--modal-backdrop);
 }
 
 .modal-card {
@@ -261,7 +261,7 @@
     grid-column: 1 / -1;
     grid-row: 2;
     border-left: 0;
-    border-top: 1px solid #26272b;
+    border-top: 1px solid var(--line);
   }
 
   .resize-handle {
