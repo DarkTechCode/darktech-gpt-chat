@@ -21,6 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $auth->verifyCsrf();
+session_write_close();
 
 $prompt = trim(isset($_POST['prompt']) ? (string) $_POST['prompt'] : '');
 $chatId = trim(isset($_POST['chat_id']) ? (string) $_POST['chat_id'] : '');

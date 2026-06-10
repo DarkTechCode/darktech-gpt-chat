@@ -31,6 +31,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $auth->verifyCsrf();
+    $action = isset($_POST['action']) ? (string) $_POST['action'] : 'create';
+
+    if ($action === 'rename') {
+        $id = isset($_POST['id']) ? trim((string) $_POST['id']) : '';
+        $title = isset($_POST['title']) ? trim((string) $_POST['title']) : '';
+
+        if ($id === '') {
+            JsonResponse::error('Чат не найден.', 422);
+        }
+
+        if ($title === '') {
+            JsonResponse::error('Введите название чата.', 422);
+        }
+
+        try {
+            JsonResponse::send(['ok' => true, 'chat' => $chats->rename($id, $title)]);
+        } catch (Throwable $exception) {
+            JsonResponse::error($exception->getMessage(), 404);
+        }
+    }
+
     $title = isset($_POST['title']) ? (string) $_POST['title'] : 'Новый чат';
 
     JsonResponse::send(['ok' => true, 'chat' => $chats->create($title)]);

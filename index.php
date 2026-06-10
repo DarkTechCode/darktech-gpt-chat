@@ -103,7 +103,10 @@ $boot = [
                 <header class="topbar">
                     <div>
                         <p class="eyebrow">Responses API</p>
-                        <h1 data-chat-title>Новый чат</h1>
+                        <div class="title-row">
+                            <h1 data-chat-title>Новый чат</h1>
+                            <button type="button" class="icon-button rename-chat-button" data-rename-chat title="Переименовать чат" aria-label="Переименовать чат">✎</button>
+                        </div>
                         <p class="token-summary" data-chat-usage>токены: нет данных</p>
                     </div>
                     <div class="topbar-actions">

@@ -248,6 +248,42 @@ p {
   gap: 8px;
 }
 
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rename-chat-button {
+  width: 30px;
+  height: 30px;
+  font-size: 16px;
+  opacity: 0.5;
+}
+
+.rename-chat-button:hover,
+.rename-chat-button:focus-visible {
+  opacity: 1;
+}
+
+.rename-chat-button:disabled {
+  cursor: default;
+  opacity: 0.25;
+}
+
+.chat-title-input {
+  width: min(420px, 60vw);
+  height: 34px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--panel-dark);
+  color: var(--text);
+  outline: none;
+  padding: 0 10px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
 .new-chat-button {
   white-space: nowrap;
 }
@@ -317,6 +353,12 @@ p {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chat-item.is-pending strong::after {
+  content: " · выполняется";
+  color: var(--muted);
+  font-weight: 400;
 }
 
 .chat-item span {

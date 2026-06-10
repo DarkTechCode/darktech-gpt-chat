@@ -1,6 +1,16 @@
 (function () {
     const boot = window.GPT_CHAT_APP || {};
-    const state = { chats: [], activeChat: null, gallery: [], galleryRefs: [], usage: null, mode: 'chat', busy: false };
+    const state = {
+        chats: [],
+        activeChat: null,
+        gallery: [],
+        galleryRefs: [],
+        usage: null,
+        mode: 'chat',
+        pending: {},
+        pendingTickId: null,
+        localMessages: {},
+    };
 
     document.addEventListener('DOMContentLoaded', function () {
         const loginForm = document.querySelector('[data-login-form]');
@@ -34,6 +44,7 @@
         $('[data-new-chat]').addEventListener('click', createChat);
         if ($('[data-logout]')) { $('[data-logout]').addEventListener('click', logout); }
         $('[data-composer]').addEventListener('submit', generate);
+        $('[data-rename-chat]').addEventListener('click', renameActiveChat);
         $('[data-image-mode]').addEventListener('click', toggleImageMode);
         window.PromptDraft.bind($('[data-prompt]'));
         $('[data-attach]').addEventListener('click', function () { setMode('image'); $('[data-ref-input]').click(); });
@@ -60,10 +71,7 @@
     }
 
     async function loadChats(preferredId) {
-        const data = await request('api/chats.php');
-        state.chats = data.chats || [];
-        state.usage = data.usage || null;
-        renderSidebar();
+        await loadChatSummaries();
 
         const activeId = preferredId || (state.activeChat && state.activeChat.id) || (state.chats[0] && state.chats[0].id);
 
@@ -75,23 +83,46 @@
         }
     }
 
+    async function loadChatSummaries() {
+        const data = await request('api/chats.php');
+        state.chats = data.chats || [];
+        state.usage = data.usage || null;
+        renderSidebar();
+    }
+
     async function openChat(chatId) {
         const data = await request('api/chats.php?id=' + encodeURIComponent(chatId));
         state.activeChat = data.chat;
+        appendLocalMessages(chatId);
         renderSidebar();
         renderChat();
     }
 
-    async function createChat() {
+    function appendLocalMessages(chatId) {
+        if (!state.activeChat || !state.localMessages[chatId] || state.localMessages[chatId].length === 0) {
+            return;
+        }
+
+        state.activeChat.messages = state.activeChat.messages.concat(state.localMessages[chatId]);
+        delete state.localMessages[chatId];
+    }
+
+    async function createChat(resetMode) {
         try {
-            setMode('chat');
+            if (resetMode !== false) {
+                setMode('chat');
+            }
             const form = new FormData();
             form.append('title', 'Новый чат');
             const data = await request('api/chats.php', { method: 'POST', body: form });
             state.activeChat = data.chat;
-            await loadChats(data.chat.id);
+            await loadChatSummaries();
+            renderChat();
+
+            return data.chat;
         } catch (exception) {
             appendClientError('Не удалось создать чат.', exception);
+            return null;
         }
     }
 
@@ -106,45 +137,60 @@
         const composer = event.currentTarget;
         const form = new FormData(composer);
         const prompt = String(form.get('prompt') || '').trim();
-        let finalStatus = 'Готов';
 
         if (!prompt) { return; }
 
-        form.set('mode', state.mode);
+        const requestMode = state.mode;
+        const requestChat = state.activeChat || await createChat(false);
 
-        if (state.activeChat) { form.append('chat_id', state.activeChat.id); }
+        if (!requestChat) { return; }
 
-        if (state.mode === 'image') {
-            state.galleryRefs.forEach(function (path) { form.append('gallery_refs[]', path); });
+        if (isChatPending(requestChat.id)) {
+            setStatus('Этот чат уже ждет ответ.');
+            return;
         }
 
-        setBusy(true);
-        startGenerationTimer();
+        const requestRefs = state.galleryRefs.slice();
+
+        form.set('mode', requestMode);
+        form.append('chat_id', requestChat.id);
+
+        if (requestMode === 'image') {
+            requestRefs.forEach(function (path) { form.append('gallery_refs[]', path); });
+        }
+
+        startChatPending(requestChat.id, requestMode);
+        composer.reset();
+        window.PromptDraft.clear();
+        state.galleryRefs = [];
+        renderRefs();
+        renderMode();
 
         try {
             const data = await request('api/generate.php', { method: 'POST', body: form });
-            finalStatus = 'Готов · ' + formatTimer(stopGenerationTimer());
-            state.activeChat = data.chat;
-            composer.reset();
-            window.PromptDraft.clear();
-            state.galleryRefs = [];
-            renderRefs();
-            renderMode();
-            renderChat();
-            await loadChats(data.chat.id);
-            if (state.mode === 'image') { await loadGallery(); }
-        } catch (exception) {
-            finalStatus = exception.message + ' · ' + formatTimer(stopGenerationTimer());
 
-            if (exception.payload && exception.payload.chat) {
-                state.activeChat = exception.payload.chat;
+            if (state.activeChat && state.activeChat.id === data.chat.id) {
+                state.activeChat = data.chat;
+                appendLocalMessages(data.chat.id);
                 renderChat();
+            }
+
+            await loadChatSummaries();
+            if (requestMode === 'image') { await loadGallery(); }
+        } catch (exception) {
+            if (exception.payload && exception.payload.chat) {
+                if (state.activeChat && state.activeChat.id === exception.payload.chat.id) {
+                    state.activeChat = exception.payload.chat;
+                    appendLocalMessages(exception.payload.chat.id);
+                    renderChat();
+                }
+
+                await loadChatSummaries();
             } else {
-                appendClientError('Не удалось получить ответ.', exception, prompt);
+                appendClientError('Не удалось получить ответ.', exception, prompt, requestChat.id, requestMode);
             }
         } finally {
-            setBusy(false);
-            setStatus(finalStatus);
+            finishChatPending(requestChat.id);
         }
     }
 
@@ -166,7 +212,9 @@
         state.chats.forEach(function (chat) {
             const item = document.createElement('button');
             item.type = 'button';
-            item.className = 'chat-item' + (state.activeChat && state.activeChat.id === chat.id ? ' is-active' : '');
+            item.className = 'chat-item'
+                + (state.activeChat && state.activeChat.id === chat.id ? ' is-active' : '')
+                + (isChatPending(chat.id) ? ' is-pending' : '');
             item.addEventListener('click', function () {
                 openChat(chat.id).catch(function (exception) {
                     appendClientError('Не удалось открыть чат.', exception);
@@ -185,6 +233,8 @@
         messages.innerHTML = '';
         title.textContent = state.activeChat ? state.activeChat.title : 'Новый чат';
         $('[data-chat-usage]').textContent = state.activeChat ? window.UsageFormatter.full(state.activeChat.usage) : 'токены: нет данных';
+        $('[data-rename-chat]').disabled = !state.activeChat;
+        renderBusyState();
 
         if (!state.activeChat || !state.activeChat.messages.length) {
             messages.append(child('div', 'Новый чат', 'empty-state'));
@@ -382,42 +432,86 @@
         }
     }
 
-    function startGenerationTimer() {
-        const busyLabel = state.mode === 'image' ? 'Генерация' : 'Ответ';
-
-        if (!window.GenerationTimer) {
-            setStatus(busyLabel);
-            return;
-        }
-
-        window.GenerationTimer.start(function (label) {
-            setStatus(busyLabel + ' · ' + label);
-            $('[data-send]').textContent = busyLabel + ' ' + label;
-        });
+    function startChatPending(chatId, mode) {
+        state.pending[chatId] = { startedAt: Date.now(), mode: mode };
+        startPendingTicker();
+        renderSidebar();
+        renderBusyState();
     }
 
-    function stopGenerationTimer() { return window.GenerationTimer ? window.GenerationTimer.stop() : 0; }
+    function finishChatPending(chatId) {
+        delete state.pending[chatId];
+        stopPendingTickerIfIdle();
+        renderSidebar();
+        renderBusyState();
+    }
 
-    function formatTimer(milliseconds) { return window.GenerationTimer ? window.GenerationTimer.format(milliseconds) : '0:00'; }
+    function startPendingTicker() {
+        if (state.pendingTickId !== null) { return; }
 
-    function setBusy(isBusy) {
+        state.pendingTickId = setInterval(renderBusyState, 1000);
+    }
+
+    function stopPendingTickerIfIdle() {
+        if (pendingCount() > 0 || state.pendingTickId === null) { return; }
+
+        clearInterval(state.pendingTickId);
+        state.pendingTickId = null;
+    }
+
+    function renderBusyState() {
         const send = $('[data-send]');
-        state.busy = isBusy;
-        send.disabled = isBusy;
-        $('[data-image-mode]').disabled = isBusy;
+        const imageButton = $('[data-image-mode]');
+        const pending = activePending();
 
-        if (!isBusy) { send.textContent = sendLabel(); }
+        send.disabled = pending !== null;
+        imageButton.disabled = pending !== null;
 
-        $('[data-status]').classList.toggle('is-busy', isBusy);
+        if (pending !== null) {
+            const label = busyLabel(pending.mode);
+            const elapsed = formatDuration(Date.now() - pending.startedAt);
+            send.textContent = label + ' ' + elapsed;
+            setStatus(label + ' · ' + elapsed);
+        } else {
+            send.textContent = sendLabel();
+            setStatus(pendingCount() > 0 ? 'Фоновых запросов: ' + pendingCount() : 'Готов');
+        }
+
+        $('[data-status]').classList.toggle('is-busy', pending !== null);
     }
 
     function setStatus(text) { $('[data-status]').textContent = text; }
 
-    function appendClientError(title, exception, prompt) {
+    function isChatPending(chatId) { return Boolean(state.pending[chatId]); }
+
+    function activePending() {
+        if (!state.activeChat || !state.pending[state.activeChat.id]) {
+            return null;
+        }
+
+        return state.pending[state.activeChat.id];
+    }
+
+    function pendingCount() { return Object.keys(state.pending).length; }
+
+    function busyLabel(mode) { return mode === 'image' ? 'Генерация' : 'Ответ'; }
+
+    function formatDuration(milliseconds) {
+        const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = String(totalSeconds % 60).padStart(2, '0');
+
+        return minutes + ':' + seconds;
+    }
+
+    function appendClientError(title, exception, prompt, chatId, mode) {
         const now = new Date().toISOString();
         const message = exception && exception.message ? exception.message : title;
+        const messageMode = mode || state.mode;
+        const targetChatId = chatId || (state.activeChat ? state.activeChat.id : '');
+        const messages = [];
 
-        if (!state.activeChat) {
+        if (!targetChatId && !state.activeChat) {
             state.activeChat = {
                 id: 'local_' + Date.now(),
                 title: prompt || title,
@@ -429,27 +523,134 @@
         }
 
         if (prompt) {
-            state.activeChat.messages.push({
+            messages.push({
                 id: tempId('msg'),
                 role: 'user',
                 content: prompt,
                 createdAt: now,
-                mode: state.mode,
+                mode: messageMode,
             });
         }
 
-        state.activeChat.messages.push({
+        messages.push({
             id: tempId('err'),
             role: 'assistant',
             content: 'Ошибка: ' + message,
             createdAt: now,
-            mode: state.mode,
+            mode: messageMode,
             error: true,
-            errorDetails: window.ChatErrors.detailsFromException(exception, title, state.mode),
+            errorDetails: window.ChatErrors.detailsFromException(exception, title, messageMode),
         });
 
-        renderChat();
+        if (targetChatId && (!state.activeChat || state.activeChat.id !== targetChatId)) {
+            state.localMessages[targetChatId] = (state.localMessages[targetChatId] || []).concat(messages);
+            renderSidebar();
+        } else {
+            state.activeChat.messages = state.activeChat.messages.concat(messages);
+            renderChat();
+        }
+
         setStatus(message);
+    }
+
+    async function renameActiveChat() {
+        if (!state.activeChat) {
+            return;
+        }
+
+        const existingInput = $('[data-chat-title-input]');
+
+        if (existingInput) {
+            existingInput.focus();
+            existingInput.select();
+            return;
+        }
+
+        const titleNode = $('[data-chat-title]');
+        const button = $('[data-rename-chat]');
+        const input = document.createElement('input');
+        let closed = false;
+
+        input.type = 'text';
+        input.className = 'chat-title-input';
+        input.value = state.activeChat.title || '';
+        input.maxLength = 64;
+        input.setAttribute('data-chat-title-input', '');
+        input.setAttribute('aria-label', 'Название чата');
+        titleNode.hidden = true;
+        button.disabled = true;
+        titleNode.after(input);
+        input.focus();
+        input.select();
+
+        input.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                saveInlineChatTitle(input, titleNode, button, function () { closed = true; });
+            }
+
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                closed = true;
+                closeInlineChatTitle(input, titleNode, button);
+            }
+        });
+
+        input.addEventListener('blur', function () {
+            if (closed) {
+                return;
+            }
+
+            saveInlineChatTitle(input, titleNode, button, function () { closed = true; });
+        });
+    }
+
+    async function saveInlineChatTitle(input, titleNode, button, onClose) {
+        if (input.dataset.saving === '1') {
+            return;
+        }
+
+        input.dataset.saving = '1';
+        const trimmed = input.value.trim();
+
+        if (trimmed === '') {
+            setStatus('Введите название чата.');
+            input.dataset.saving = '0';
+            input.focus();
+            return;
+        }
+
+        if (!state.activeChat || trimmed === state.activeChat.title) {
+            onClose();
+            closeInlineChatTitle(input, titleNode, button);
+            return;
+        }
+
+        const form = new FormData();
+        form.append('action', 'rename');
+        form.append('id', state.activeChat.id);
+        form.append('title', trimmed);
+
+        try {
+            const data = await request('api/chats.php', { method: 'POST', body: form });
+            state.activeChat = data.chat;
+            appendLocalMessages(data.chat.id);
+            await loadChatSummaries();
+            setStatus('Название обновлено');
+            onClose();
+            closeInlineChatTitle(input, titleNode, button);
+        } catch (exception) {
+            input.dataset.saving = '0';
+            input.focus();
+            appendClientError('Не удалось переименовать чат.', exception);
+        }
+    }
+
+    function closeInlineChatTitle(input, titleNode, button) {
+        input.remove();
+        titleNode.hidden = false;
+        button.disabled = !state.activeChat;
+        titleNode.textContent = state.activeChat ? state.activeChat.title : 'Новый чат';
     }
 
     function toggleImageMode() {
@@ -490,7 +691,7 @@
             prompt.placeholder = isImage ? 'Опишите изображение...' : 'Напишите сообщение...';
         }
 
-        if (!state.busy) { $('[data-send]').textContent = sendLabel(); }
+        renderBusyState();
     }
 
     function clearReferences() {

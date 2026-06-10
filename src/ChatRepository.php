@@ -142,6 +142,25 @@ final class ChatRepository
         });
     }
 
+    public function rename(string $chatId, string $title): array
+    {
+        return $this->withExclusiveLock(function (array $data) use ($chatId, $title): array {
+            foreach ($data['chats'] as $index => $chat) {
+                if ($chat['id'] !== $chatId) {
+                    continue;
+                }
+
+                $chat['title'] = $this->shortText($title, 64) ?: 'Новый чат';
+                $chat['updatedAt'] = $this->now();
+                $data['chats'][$index] = $chat;
+
+                return ['data' => $data, 'result' => $this->withUsage($chat)];
+            }
+
+            throw new RuntimeException('Chat was not found.');
+        });
+    }
+
     public function newMessage(string $role, string $content, array $extra = []): array
     {
         return array_merge([
