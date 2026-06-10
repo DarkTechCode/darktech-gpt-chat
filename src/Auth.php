@@ -30,11 +30,21 @@ final class Auth
 
     public function isAuthenticated(): bool
     {
+        if (!$this->isEnabled()) {
+            return true;
+        }
+
         return isset($_SESSION['authenticated']) && $_SESSION['authenticated'] === true;
     }
 
     public function login(string $password): bool
     {
+        if (!$this->isEnabled()) {
+            $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+
+            return true;
+        }
+
         if (!$this->passwordMatches($password)) {
             return false;
         }
@@ -91,5 +101,11 @@ final class Auth
         $plain = $this->config->string('auth.password', '');
 
         return $plain !== '' && hash_equals($plain, $password);
+    }
+
+    public function isEnabled(): bool
+    {
+        return $this->config->nullableString('auth.password_hash') !== null
+            || $this->config->string('auth.password', '') !== '';
     }
 }

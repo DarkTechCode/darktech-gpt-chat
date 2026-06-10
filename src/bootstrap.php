@@ -5,11 +5,13 @@ declare(strict_types=1);
 use GptImages\Auth;
 use GptImages\ChatRepository;
 use GptImages\Config;
+use GptImages\ConfigFile;
 use GptImages\ImageStorage;
 use GptImages\NeurogateClient;
 use GptImages\ResponseImageExtractor;
 
 require_once __DIR__ . '/Config.php';
+require_once __DIR__ . '/ConfigFile.php';
 require_once __DIR__ . '/JsonResponse.php';
 require_once __DIR__ . '/Auth.php';
 require_once __DIR__ . '/ChatRepository.php';
@@ -29,6 +31,7 @@ $imageStorage = new ImageStorage(
 
 return [
     'config' => $config,
+    'configFile' => new ConfigFile(__DIR__ . '/../config.php'),
     'auth' => $auth,
     'chats' => new ChatRepository($config->string('storage.data_dir')),
     'images' => $imageStorage,

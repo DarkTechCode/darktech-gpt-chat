@@ -32,7 +32,7 @@
 
     function bindApp() {
         $('[data-new-chat]').addEventListener('click', createChat);
-        $('[data-logout]').addEventListener('click', logout);
+        if ($('[data-logout]')) { $('[data-logout]').addEventListener('click', logout); }
         $('[data-composer]').addEventListener('submit', generate);
         $('[data-image-mode]').addEventListener('click', toggleImageMode);
         window.PromptDraft.bind($('[data-prompt]'));
