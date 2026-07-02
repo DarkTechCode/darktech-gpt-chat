@@ -497,15 +497,16 @@ p {
   white-space: nowrap;
 }
 
-.chat-item.is-pending strong::after {
-  content: " · выполняется";
-  color: var(--muted);
-  font-weight: 400;
-}
-
 .chat-item span {
   color: var(--muted);
   font-size: 12px;
+}
+
+.chat-item .chat-pending-time {
+  margin-top: 2px;
+  color: var(--link);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .chat-item .chat-usage {
@@ -577,6 +578,11 @@ p {
 
 .message.is-error .bubble {
   border: 1px solid var(--danger);
+}
+
+.message.is-pending-message .bubble,
+.message.is-pending-message .image-strip {
+  opacity: 0.82;
 }
 
 .message.assistant .message-markdown {

@@ -14,6 +14,7 @@ require_once __DIR__ . '/Config.php';
 require_once __DIR__ . '/ConfigFile.php';
 require_once __DIR__ . '/JsonResponse.php';
 require_once __DIR__ . '/Auth.php';
+require_once __DIR__ . '/ImageMessageVariants.php';
 require_once __DIR__ . '/ChatRepository.php';
 require_once __DIR__ . '/ImageStorage.php';
 require_once __DIR__ . '/ResponseImageExtractor.php';

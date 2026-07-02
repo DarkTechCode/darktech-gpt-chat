@@ -288,7 +288,17 @@ $boot = [
                     <textarea name="prompt" data-prompt rows="3" placeholder="Напишите сообщение..." required></textarea>
                     <div class="quick-controls" data-image-controls hidden>
                         <input type="file" data-ref-input name="references[]" accept="image/png,image/jpeg,image/webp" multiple hidden>
-                        <button type="button" class="ghost-button ref-button" data-attach>+ референс</button>
+                        <div class="image-side-controls">
+                            <button type="button" class="ghost-button ref-button" data-attach>+ референс</button>
+                            <label class="image-count-field">
+                                <span>Картинок</span>
+                                <select name="image_count" data-image-count>
+                                    <?php for ($imageCount = 1; $imageCount <= 10; $imageCount++): ?>
+                                        <option value="<?= h((string) $imageCount); ?>"><?= h((string) $imageCount); ?></option>
+                                    <?php endfor; ?>
+                                </select>
+                            </label>
+                        </div>
                         <fieldset class="ratio-picker" aria-label="Пропорции изображения">
                             <?php foreach ($ratios as $key => $settings): ?>
                                 <?php
@@ -338,7 +348,11 @@ $boot = [
                     </div>
                     <button type="button" class="ghost-button" data-close-modal>Закрыть</button>
                 </header>
-                <img data-modal-image alt="">
+                <div class="modal-image-wrap">
+                    <button type="button" class="icon-button modal-nav modal-prev" data-modal-prev title="Предыдущее изображение" aria-label="Предыдущее изображение">‹</button>
+                    <img data-modal-image alt="">
+                    <button type="button" class="icon-button modal-nav modal-next" data-modal-next title="Следующее изображение" aria-label="Следующее изображение">›</button>
+                </div>
                 <footer>
                     <button type="button" class="ghost-button" data-open-chat hidden>Открыть чат</button>
                     <button type="button" class="ghost-button" data-modal-reference>В референсы</button>

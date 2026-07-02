@@ -52,6 +52,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if ($action === 'activate_variant') {
+        $id = isset($_POST['id']) ? trim((string) $_POST['id']) : '';
+        $messageId = isset($_POST['message_id']) ? trim((string) $_POST['message_id']) : '';
+        $variantId = isset($_POST['variant_id']) ? trim((string) $_POST['variant_id']) : '';
+
+        if ($id === '' || $messageId === '' || $variantId === '') {
+            JsonResponse::error('Вариант генерации не найден.', 422);
+        }
+
+        try {
+            JsonResponse::send(['ok' => true, 'chat' => $chats->activateMessageVariant($id, $messageId, $variantId)]);
+        } catch (Throwable $exception) {
+            JsonResponse::error($exception->getMessage(), 404);
+        }
+    }
+
     $title = isset($_POST['title']) ? (string) $_POST['title'] : 'Новый чат';
 
     JsonResponse::send(['ok' => true, 'chat' => $chats->create($title)]);

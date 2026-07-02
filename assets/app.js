@@ -19,6 +19,11 @@
         pending: {},
         pendingTickId: null,
         localMessages: {},
+        imageIndexes: {},
+        modal: {
+            images: [],
+            index: 0,
+        },
     };
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -64,6 +69,8 @@
         document.querySelectorAll('[data-close-modal]').forEach(function (node) {
             node.addEventListener('click', closeModal);
         });
+        $('[data-modal-prev]').addEventListener('click', function () { stepModalImage(-1); });
+        $('[data-modal-next]').addEventListener('click', function () { stepModalImage(1); });
         $('[data-copy-link]').addEventListener('click', copyModalLink);
         $('[data-open-chat]').addEventListener('click', openModalChat);
         $('[data-modal-reference]').addEventListener('click', addModalReference);
@@ -169,6 +176,9 @@
         }
 
         const requestRefs = state.galleryRefs.slice();
+        const optimisticMessage = requestMode === 'image'
+            ? pendingImageMessage(prompt, requestRefs, Array.from($('[data-ref-input]').files || []))
+            : null;
 
         form.set('mode', requestMode);
         form.append('chat_id', requestChat.id);
@@ -177,7 +187,7 @@
             requestRefs.forEach(function (path) { form.append('gallery_refs[]', path); });
         }
 
-        startChatPending(requestChat.id, requestMode);
+        startChatPending(requestChat.id, requestMode, optimisticMessage);
         composer.reset();
         window.PromptDraft.clear();
         state.galleryRefs = [];
@@ -262,11 +272,13 @@
         $('[data-global-usage]').textContent = 'все чаты: ' + window.UsageFormatter.short(state.usage);
 
         state.chats.forEach(function (chat) {
+            const pending = state.pending[chat.id] || null;
             const item = document.createElement('button');
             item.type = 'button';
+            item.dataset.chatId = chat.id;
             item.className = 'chat-item'
                 + (state.activeChat && state.activeChat.id === chat.id ? ' is-active' : '')
-                + (isChatPending(chat.id) ? ' is-pending' : '');
+                + (pending ? ' is-pending' : '');
             item.addEventListener('click', function () {
                 openChat(chat.id).catch(function (exception) {
                     appendClientError('Не удалось открыть чат.', exception);
@@ -274,14 +286,20 @@
             });
             item.append(child('strong', chat.title));
             item.append(child('span', chat.preview || ''));
+            if (pending) {
+                const pendingNode = child('span', sidebarPendingLabel(pending), 'chat-pending-time');
+                pendingNode.setAttribute('data-chat-pending-time', '');
+                item.append(pendingNode);
+            }
             item.append(child('span', window.UsageFormatter.short(chat.usage), 'chat-usage'));
             list.append(item);
         });
     }
 
-    function renderChat() {
+    function renderChat(scrollToEnd) {
         const title = $('[data-chat-title]');
         const messages = $('[data-messages]');
+        const previousScrollTop = messages.scrollTop;
         messages.innerHTML = '';
         title.textContent = state.activeChat ? state.activeChat.title : 'Новый чат';
         $('[data-chat-usage]').textContent = state.activeChat ? window.UsageFormatter.full(state.activeChat.usage) : 'токены: нет данных';
@@ -289,57 +307,383 @@
         window.PromptDraft.setChat(state.activeChat ? state.activeChat.id : null);
         renderBusyState();
 
-        if (!state.activeChat || !state.activeChat.messages.length) {
+        if (!state.activeChat) {
             messages.append(child('div', 'Новый чат', 'empty-state'));
             return;
         }
 
-        state.activeChat.messages.forEach(function (message) {
+        const chatMessages = messagesWithPending(state.activeChat);
+
+        if (chatMessages.length === 0) {
+            messages.append(child('div', 'Новый чат', 'empty-state'));
+            return;
+        }
+
+        chatMessages.forEach(function (message) {
+            const view = messageView(message);
+            const displayImages = messageImagesForDisplay(message, view);
+            const imageIndex = activeImageIndex(message, view);
             const article = document.createElement('article');
-            article.className = 'message ' + message.role + (message.error ? ' is-error' : '');
-            article.append(child('div', roleName(message.role) + ' · ' + formatDate(message.createdAt), 'message-head'));
-            article.append(messageBubble(message));
+            article.className = 'message ' + message.role
+                + (message.error ? ' is-error' : '')
+                + (message.pending ? ' is-pending-message' : '');
+            article.append(child('div', messageHeadText(message, view), 'message-head'));
+            article.append(messageBubble(message, view));
             if (message.errorDetails) { article.append(window.ChatErrors.panel(message.errorDetails)); }
 
-            if (message.images && message.images.length) { article.append(imageStrip(message.images, message.role, state.activeChat.id)); }
+            if (displayImages.length) {
+                article.append(imageStrip(displayImages, message.role, state.activeChat.id, view.images, imageIndex));
+            }
+            if (canRegenerateImage(message)) { article.append(imageVariantControls(message)); }
 
             messages.append(article);
         });
 
-        scrollMessagesToBottom();
+        if (scrollToEnd !== false) {
+            scrollMessagesToBottom();
+        } else {
+            messages.scrollTop = previousScrollTop;
+        }
     }
 
-    function messageBubble(message) {
+    function messageBubble(message, view) {
         const bubble = document.createElement('div');
         bubble.className = 'bubble';
+        const content = view ? view.content : message.content;
 
         if (message.role === 'assistant' && window.ChatMarkdown) {
-            window.ChatMarkdown.render(bubble, message.content || '');
+            window.ChatMarkdown.render(bubble, content || '');
             return bubble;
         }
 
-        bubble.textContent = message.content || '';
+        bubble.textContent = content || '';
 
         return bubble;
     }
 
-    function imageStrip(images, role, chatId) {
+    function messageHeadText(message, view) {
+        const parts = [roleName(message.role)];
+        const date = formatDate(view.createdAt);
+
+        if (date !== '') {
+            parts.push(date);
+        }
+
+        if (message.pending) {
+            parts.push('генерируется');
+        }
+
+        return parts.join(' · ');
+    }
+
+    function imageStrip(images, role, chatId, modalImages, modalStartIndex) {
         const strip = document.createElement('div');
+        const contextImages = Array.isArray(modalImages) && modalImages.length > 0 ? modalImages : images;
+        const startIndex = modalStartIndex === undefined ? 0 : modalStartIndex;
         strip.className = 'image-strip';
 
         if (role === 'assistant') { strip.classList.add('image-strip-large'); }
 
-        images.forEach(function (image) {
-            strip.append(imageCard(image, role === 'assistant' && image.kind === 'generated', chatId));
+        images.forEach(function (image, index) {
+            strip.append(imageCard(image, role === 'assistant' && image.kind === 'generated', chatId, undefined, contextImages, startIndex + index));
         });
         return strip;
+    }
+
+    function messagesWithPending(chat) {
+        const messages = Array.isArray(chat.messages) ? chat.messages.slice() : [];
+        const pending = state.pending[chat.id] || null;
+
+        if (pending && pending.message && !persistedPendingRequestExists(pending, messages)) {
+            messages.push(pending.message);
+        }
+
+        return messages;
+    }
+
+    function persistedPendingRequestExists(pending, messages) {
+        const content = pending.message && pending.message.content ? pending.message.content : '';
+
+        if (content === '') {
+            return false;
+        }
+
+        return messages.some(function (message) {
+            if (!message || message.role !== 'user' || message.mode !== pending.mode || message.content !== content) {
+                return false;
+            }
+
+            const createdAt = Date.parse(message.createdAt || '');
+
+            return Number.isFinite(createdAt) && createdAt >= pending.startedAt - 10000;
+        });
+    }
+
+    function pendingImageMessage(prompt, galleryRefs, files) {
+        const objectUrls = [];
+        const images = [];
+
+        files.forEach(function (file) {
+            const url = URL.createObjectURL(file);
+            objectUrls.push(url);
+            images.push({
+                kind: 'reference',
+                file: file.name,
+                path: url,
+                url: url,
+                width: 0,
+                height: 0,
+                bytes: file.size || 0,
+                mime: file.type || 'image/*',
+            });
+        });
+
+        galleryRefs.forEach(function (path) {
+            images.push({
+                kind: 'reference',
+                file: fileName(path),
+                path: path,
+                url: path,
+                width: 0,
+                height: 0,
+                bytes: 0,
+                mime: 'image/*',
+            });
+        });
+
+        return {
+            id: tempId('pending_msg'),
+            role: 'user',
+            content: prompt,
+            createdAt: new Date().toISOString(),
+            mode: 'image',
+            images: images,
+            pending: true,
+            objectUrls: objectUrls,
+        };
+    }
+
+    function messageImagesForDisplay(message, view) {
+        const images = Array.isArray(view.images) ? view.images : [];
+
+        if (message.role !== 'assistant' || message.mode !== 'image' || images.length < 2) {
+            return images;
+        }
+
+        return [images[activeImageIndex(message, view)]];
+    }
+
+    function messageView(message) {
+        const variant = activeVariant(message);
+
+        if (!variant) {
+            return {
+                content: message.content || '',
+                createdAt: message.createdAt,
+                images: Array.isArray(message.images) ? message.images : [],
+            };
+        }
+
+        return {
+            content: variant.content || '',
+            createdAt: variant.createdAt || message.createdAt,
+            images: Array.isArray(variant.images) ? variant.images : [],
+            variantId: variant.id || '',
+        };
+    }
+
+    function activeVariant(message) {
+        const variants = imageVariants(message);
+
+        if (variants.length === 0) {
+            return null;
+        }
+
+        return variants[activeVariantIndex(message)] || variants[variants.length - 1];
+    }
+
+    function imageVariants(message) {
+        return Array.isArray(message.variants) ? message.variants.filter(function (variant) {
+            return variant && typeof variant === 'object';
+        }) : [];
+    }
+
+    function activeVariantIndex(message) {
+        const variants = imageVariants(message);
+        const activeId = message.activeVariantId || '';
+        const found = variants.findIndex(function (variant) {
+            return variant.id === activeId;
+        });
+
+        return found === -1 ? Math.max(0, variants.length - 1) : found;
+    }
+
+    function canRegenerateImage(message) {
+        return message.role === 'assistant' && message.mode === 'image' && !message.error;
+    }
+
+    function activeImageIndex(message, view) {
+        const images = Array.isArray(view.images) ? view.images : [];
+
+        if (images.length === 0) {
+            return 0;
+        }
+
+        const key = imageIndexKey(message);
+        const index = Number(state.imageIndexes[key]) || 0;
+
+        return Math.min(images.length - 1, Math.max(0, index));
+    }
+
+    function setActiveImageIndex(message, index) {
+        const view = messageView(message);
+        const images = Array.isArray(view.images) ? view.images : [];
+
+        if (images.length === 0) {
+            return;
+        }
+
+        state.imageIndexes[imageIndexKey(message)] = Math.min(images.length - 1, Math.max(0, index));
+        renderChat(false);
+    }
+
+    function imageIndexKey(message) {
+        const chatId = state.activeChat ? state.activeChat.id : '';
+        const variant = activeVariant(message);
+        const variantId = variant && variant.id ? variant.id : 'message';
+
+        return chatId + ':' + (message.id || '') + ':' + variantId;
+    }
+
+    function imageVariantControls(message) {
+        const controls = document.createElement('div');
+        const variants = imageVariants(message);
+        const activeIndex = activeVariantIndex(message);
+        const view = messageView(message);
+        const images = Array.isArray(view.images) ? view.images : [];
+        const imageIndex = activeImageIndex(message, view);
+        const pending = state.activeChat && isChatPending(state.activeChat.id);
+
+        controls.className = 'image-variant-controls';
+
+        if (images.length > 1) {
+            controls.append(variantButton('‹', 'Предыдущая картинка', function () {
+                setActiveImageIndex(message, imageIndex - 1);
+            }, imageIndex <= 0));
+            controls.append(child('span', 'Картинка ' + (imageIndex + 1) + ' / ' + images.length, 'image-variant-count'));
+            controls.append(variantButton('›', 'Следующая картинка', function () {
+                setActiveImageIndex(message, imageIndex + 1);
+            }, imageIndex >= images.length - 1));
+        }
+
+        if (variants.length > 1) {
+            controls.append(variantButton('‹', 'Предыдущий вариант', function () {
+                activateImageVariant(message, activeIndex - 1).catch(function (exception) {
+                    appendClientError('Не удалось переключить вариант.', exception);
+                });
+            }, pending || activeIndex <= 0));
+            controls.append(child('span', 'Вариант ' + (activeIndex + 1) + ' / ' + variants.length, 'image-variant-count'));
+            controls.append(variantButton('›', 'Следующий вариант', function () {
+                activateImageVariant(message, activeIndex + 1).catch(function (exception) {
+                    appendClientError('Не удалось переключить вариант.', exception);
+                });
+            }, pending || activeIndex >= variants.length - 1));
+        }
+
+        controls.append(variantButton('↻', 'Перегенерировать', function () {
+            regenerateImage(message);
+        }, pending));
+
+        return controls;
+    }
+
+    function variantButton(text, title, onClick, disabled) {
+        const button = child('button', text, 'icon-button image-variant-button');
+        button.type = 'button';
+        button.title = title;
+        button.setAttribute('aria-label', title);
+        button.disabled = Boolean(disabled);
+        button.addEventListener('click', onClick);
+
+        return button;
+    }
+
+    async function activateImageVariant(message, index) {
+        if (!state.activeChat) {
+            return;
+        }
+
+        const variants = imageVariants(message);
+        const variant = variants[index];
+
+        if (!variant || !variant.id) {
+            return;
+        }
+
+        const form = new FormData();
+        form.append('action', 'activate_variant');
+        form.append('id', state.activeChat.id);
+        form.append('message_id', message.id);
+        form.append('variant_id', variant.id);
+
+        const data = await request('api/chats.php', { method: 'POST', body: form });
+
+        if (state.activeChat && state.activeChat.id === data.chat.id) {
+            state.activeChat = data.chat;
+            appendLocalMessages(data.chat.id);
+            renderChat(false);
+        }
+
+        await loadChatSummaries();
+    }
+
+    async function regenerateImage(message) {
+        const chatId = state.activeChat ? state.activeChat.id : '';
+
+        if (!chatId || isChatPending(chatId)) {
+            return;
+        }
+
+        const form = new FormData();
+        form.append('action', 'regenerate_image');
+        form.append('chat_id', chatId);
+        form.append('message_id', message.id);
+
+        startChatPending(chatId, 'image');
+
+        try {
+            const data = await request('api/generate.php', { method: 'POST', body: form });
+
+            if (state.activeChat && state.activeChat.id === data.chat.id) {
+                state.activeChat = data.chat;
+                appendLocalMessages(data.chat.id);
+                renderChat();
+            }
+
+            await loadChatSummaries();
+            await loadGallery(0, false);
+        } catch (exception) {
+            if (exception.payload && exception.payload.chat) {
+                if (state.activeChat && state.activeChat.id === exception.payload.chat.id) {
+                    state.activeChat = exception.payload.chat;
+                    appendLocalMessages(exception.payload.chat.id);
+                    renderChat();
+                }
+
+                await loadChatSummaries();
+            } else {
+                appendClientError('Не удалось перегенерировать картинку.', exception, null, chatId, 'image');
+            }
+        } finally {
+            finishChatPending(chatId);
+        }
     }
 
     function renderGallery() {
         const grid = $('[data-gallery]');
         grid.innerHTML = '';
 
-        state.gallery.forEach(function (image) { grid.append(imageCard(image, false, null, false)); });
+        state.gallery.forEach(function (image, index) { grid.append(imageCard(image, false, null, false, state.gallery, index)); });
         renderGalleryMore();
     }
 
@@ -362,12 +706,16 @@
         }
     }
 
-    function imageCard(image, isLarge, chatId, showUsage) {
+    function imageCard(image, isLarge, chatId, showUsage, modalImages, modalIndex) {
         const modalImage = imageForModal(image, chatId);
+        const modalContext = (Array.isArray(modalImages) && modalImages.length > 0 ? modalImages : [image]).map(function (item) {
+            return imageForModal(item, chatId);
+        });
+        const contextIndex = modalIndex === undefined ? 0 : Math.min(modalContext.length - 1, Math.max(0, modalIndex));
         const card = document.createElement('button');
         card.type = 'button';
         card.className = 'image-card' + (isLarge ? ' image-card-large' : '');
-        card.addEventListener('click', function () { openModal(modalImage); });
+        card.addEventListener('click', function () { openModal(modalImage, modalContext, contextIndex); });
 
         const img = document.createElement('img');
         img.alt = window.UsageFormatter.imageName(image);
@@ -422,10 +770,41 @@
 
     function rejectRefs(count) { setStatus('Пропущено файлов: ' + count); }
 
-    function openModal(image) {
+    function openModal(image, images, index) {
+        const modal = $('[data-modal]');
+        modal.hidden = false;
+        state.modal.images = Array.isArray(images) && images.length > 0 ? images : [image];
+        state.modal.index = index === undefined ? 0 : Math.min(state.modal.images.length - 1, Math.max(0, index));
+        renderModalImage();
+    }
+
+    function closeModal() {
+        $('[data-modal]').hidden = true;
+        $('[data-modal-image]').src = '';
+        state.modal.images = [];
+        state.modal.index = 0;
+    }
+
+    function stepModalImage(delta) {
+        if (state.modal.images.length < 2) {
+            return;
+        }
+
+        state.modal.index = Math.min(state.modal.images.length - 1, Math.max(0, state.modal.index + delta));
+        renderModalImage();
+    }
+
+    function renderModalImage() {
+        const image = state.modal.images[state.modal.index];
         const modal = $('[data-modal]');
         const chatButton = $('[data-open-chat]');
-        modal.hidden = false;
+        const prevButton = $('[data-modal-prev]');
+        const nextButton = $('[data-modal-next]');
+
+        if (!image) {
+            return;
+        }
+
         modal.dataset.path = image.path || image.url;
         modal.dataset.url = image.url;
         modal.dataset.chatId = image.chatId || '';
@@ -436,9 +815,11 @@
         $('[data-open-image]').href = image.url;
         chatButton.hidden = !image.chatId;
         chatButton.title = image.chatTitle ? 'Открыть: ' + image.chatTitle : 'Открыть чат';
+        prevButton.hidden = state.modal.images.length < 2;
+        nextButton.hidden = state.modal.images.length < 2;
+        prevButton.disabled = state.modal.index <= 0;
+        nextButton.disabled = state.modal.index >= state.modal.images.length - 1;
     }
-
-    function closeModal() { $('[data-modal]').hidden = true; $('[data-modal-image]').src = ''; }
 
     async function openModalChat() {
         const chatId = $('[data-modal]').dataset.chatId;
@@ -535,24 +916,47 @@
         }
     }
 
-    function startChatPending(chatId, mode) {
-        state.pending[chatId] = { startedAt: Date.now(), mode: mode };
+    function startChatPending(chatId, mode, message) {
+        state.pending[chatId] = { startedAt: Date.now(), mode: mode, message: message || null };
         startPendingTicker();
         renderSidebar();
         renderBusyState();
+
+        if (state.activeChat && state.activeChat.id === chatId && message) {
+            renderChat();
+        }
     }
 
     function finishChatPending(chatId) {
+        const pending = state.pending[chatId] || null;
+        releasePendingMessageUrls(pending);
         delete state.pending[chatId];
         stopPendingTickerIfIdle();
         renderSidebar();
         renderBusyState();
+
+        if (state.activeChat && state.activeChat.id === chatId) {
+            renderChat(false);
+        }
+    }
+
+    function releasePendingMessageUrls(pending) {
+        const urls = pending && pending.message && Array.isArray(pending.message.objectUrls)
+            ? pending.message.objectUrls
+            : [];
+
+        urls.forEach(function (url) {
+            URL.revokeObjectURL(url);
+        });
     }
 
     function startPendingTicker() {
         if (state.pendingTickId !== null) { return; }
 
-        state.pendingTickId = setInterval(renderBusyState, 1000);
+        state.pendingTickId = setInterval(function () {
+            renderBusyState();
+            renderSidebarPendingTimes();
+        }, 1000);
     }
 
     function stopPendingTickerIfIdle() {
@@ -583,6 +987,17 @@
         $('[data-status]').classList.toggle('is-busy', pending !== null);
     }
 
+    function renderSidebarPendingTimes() {
+        document.querySelectorAll('[data-chat-pending-time]').forEach(function (node) {
+            const item = node.closest('.chat-item');
+            const pending = item ? state.pending[item.dataset.chatId] : null;
+
+            if (pending) {
+                node.textContent = sidebarPendingLabel(pending);
+            }
+        });
+    }
+
     function setStatus(text) { $('[data-status]').textContent = text; }
 
     function isChatPending(chatId) { return Boolean(state.pending[chatId]); }
@@ -598,6 +1013,10 @@
     function pendingCount() { return Object.keys(state.pending).length; }
 
     function busyLabel(mode) { return mode === 'image' ? 'Генерация' : 'Ответ'; }
+
+    function sidebarPendingLabel(pending) {
+        return busyLabel(pending.mode) + ' · ' + formatDuration(Date.now() - pending.startedAt);
+    }
 
     function formatDuration(milliseconds) {
         const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));

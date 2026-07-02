@@ -62,26 +62,17 @@ final class ChatRepository
 
         foreach ($data['chats'] as $chat) {
             foreach ($chat['messages'] as $message) {
-                $usage = isset($message['usage']) && is_array($message['usage']) ? $message['usage'] : null;
-
-                foreach (($message['images'] ?? []) as $image) {
-                    if (!is_array($image) || empty($image['file']) || ($image['kind'] ?? '') !== 'generated') {
-                        continue;
+                if (ImageMessageVariants::hasVariants($message)) {
+                    foreach ($message['variants'] as $variant) {
+                        if (is_array($variant)) {
+                            ImageMessageVariants::addGeneratedImageContext($map, $chat, $variant);
+                        }
                     }
 
-                    $entry = [
-                        'chatId' => $chat['id'],
-                        'chatTitle' => $chat['title'],
-                    ];
-
-                    if (isset($image['usage']) && is_array($image['usage'])) {
-                        $entry['usage'] = $image['usage'];
-                    } elseif ($usage !== null) {
-                        $entry['usage'] = $usage;
-                    }
-
-                    $map[(string) $image['file']] = $entry;
+                    continue;
                 }
+
+                ImageMessageVariants::addGeneratedImageContext($map, $chat, $message);
             }
         }
 
@@ -142,6 +133,99 @@ final class ChatRepository
         });
     }
 
+    public function appendMessageVariant(string $chatId, string $messageId, array $variant): array
+    {
+        ImageMessageVariants::assertVariant($variant);
+
+        return $this->withExclusiveLock(function (array $data) use ($chatId, $messageId, $variant): array {
+            foreach ($data['chats'] as $chatIndex => $chat) {
+                if ($chat['id'] !== $chatId) {
+                    continue;
+                }
+
+                foreach ($chat['messages'] as $messageIndex => $message) {
+                    if (($message['id'] ?? '') !== $messageId) {
+                        continue;
+                    }
+
+                    ImageMessageVariants::assertImageAssistantMessage($message);
+
+                    $message['variants'] = array_merge(
+                        ImageMessageVariants::variantsForAppend($message, $this->newId('msg'), $this->now()),
+                        [$variant]
+                    );
+                    $message['activeVariantId'] = (string) $variant['id'];
+                    $message = ImageMessageVariants::applyVariantToMessage($message, $variant);
+
+                    $chat['messages'][$messageIndex] = $message;
+                    $chat['updatedAt'] = isset($variant['createdAt']) ? (string) $variant['createdAt'] : $this->now();
+                    $data['chats'][$chatIndex] = $chat;
+
+                    return ['data' => $data, 'result' => $this->withUsage($chat)];
+                }
+
+                throw new RuntimeException('Сообщение генерации не найдено.');
+            }
+
+            throw new RuntimeException('Чат не найден.');
+        });
+    }
+
+    public function activateMessageVariant(string $chatId, string $messageId, string $variantId): array
+    {
+        return $this->withExclusiveLock(function (array $data) use ($chatId, $messageId, $variantId): array {
+            foreach ($data['chats'] as $chatIndex => $chat) {
+                if ($chat['id'] !== $chatId) {
+                    continue;
+                }
+
+                foreach ($chat['messages'] as $messageIndex => $message) {
+                    if (($message['id'] ?? '') !== $messageId) {
+                        continue;
+                    }
+
+                    $variant = ImageMessageVariants::findVariant($message, $variantId);
+                    $message['activeVariantId'] = $variantId;
+                    $message = ImageMessageVariants::applyVariantToMessage($message, $variant);
+
+                    $chat['messages'][$messageIndex] = $message;
+                    $data['chats'][$chatIndex] = $chat;
+
+                    return ['data' => $data, 'result' => $this->withUsage($chat)];
+                }
+
+                throw new RuntimeException('Сообщение генерации не найдено.');
+            }
+
+            throw new RuntimeException('Чат не найден.');
+        });
+    }
+
+    public function imageGenerationContext(string $chatId, string $assistantMessageId): array
+    {
+        $data = $this->readData();
+
+        foreach ($data['chats'] as $chat) {
+            if ($chat['id'] !== $chatId) {
+                continue;
+            }
+
+            $messages = isset($chat['messages']) && is_array($chat['messages']) ? $chat['messages'] : [];
+
+            foreach ($messages as $index => $message) {
+                if (!is_array($message) || ($message['id'] ?? '') !== $assistantMessageId) {
+                    continue;
+                }
+
+                return ImageMessageVariants::requestContext($messages, $message, $index);
+            }
+
+            throw new RuntimeException('Сообщение генерации не найдено.');
+        }
+
+        throw new RuntimeException('Чат не найден.');
+    }
+
     public function rename(string $chatId, string $title): array
     {
         return $this->withExclusiveLock(function (array $data) use ($chatId, $title): array {
@@ -166,6 +250,16 @@ final class ChatRepository
         return array_merge([
             'id' => $this->newId('msg'),
             'role' => $role,
+            'content' => $content,
+            'createdAt' => $this->now(),
+            'images' => [],
+        ], $extra);
+    }
+
+    public function newVariant(string $content, array $extra = []): array
+    {
+        return array_merge([
+            'id' => $this->newId('var'),
             'content' => $content,
             'createdAt' => $this->now(),
             'images' => [],
@@ -253,6 +347,16 @@ final class ChatRepository
         $count = 0;
 
         foreach ($chat['messages'] as $message) {
+            if (ImageMessageVariants::hasVariants($message)) {
+                foreach ($message['variants'] as $variant) {
+                    if (is_array($variant) && isset($variant['images']) && is_array($variant['images'])) {
+                        $count += count($variant['images']);
+                    }
+                }
+
+                continue;
+            }
+
             $count += isset($message['images']) && is_array($message['images']) ? count($message['images']) : 0;
         }
 
@@ -271,13 +375,23 @@ final class ChatRepository
         $summary = $this->emptyUsage();
 
         foreach ($chat['messages'] as $message) {
-            $usage = null;
+            if (ImageMessageVariants::hasVariants($message)) {
+                foreach ($message['variants'] as $variant) {
+                    if (!is_array($variant)) {
+                        continue;
+                    }
 
-            if (isset($message['usage']) && is_array($message['usage'])) {
-                $usage = $message['usage'];
-            } elseif (isset($message['api']['usage']) && is_array($message['api']['usage'])) {
-                $usage = $message['api']['usage'];
+                    $usage = ImageMessageVariants::usageFromSource($variant);
+
+                    if ($usage !== null) {
+                        $summary = $this->addUsage($summary, $usage);
+                    }
+                }
+
+                continue;
             }
+
+            $usage = ImageMessageVariants::usageFromSource($message);
 
             if ($usage !== null) {
                 $summary = $this->addUsage($summary, $usage);
