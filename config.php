@@ -42,6 +42,7 @@ return [
         ],
         'quality' => null,
         'background' => null,
+        'max_parallel_requests' => 5,
         'max_upload_bytes' => 10485760,
     ],
 

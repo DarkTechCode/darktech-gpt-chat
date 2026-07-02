@@ -9,6 +9,7 @@ use GptImages\ConfigFile;
 use GptImages\ImageStorage;
 use GptImages\NeurogateClient;
 use GptImages\ResponseImageExtractor;
+use GptImages\ResponsesTransport;
 
 require_once __DIR__ . '/Config.php';
 require_once __DIR__ . '/ConfigFile.php';
@@ -18,6 +19,7 @@ require_once __DIR__ . '/ImageMessageVariants.php';
 require_once __DIR__ . '/ChatRepository.php';
 require_once __DIR__ . '/ImageStorage.php';
 require_once __DIR__ . '/ResponseImageExtractor.php';
+require_once __DIR__ . '/ResponsesTransport.php';
 require_once __DIR__ . '/NeurogateClient.php';
 
 $config = Config::load(__DIR__ . '/../config.php');
@@ -36,5 +38,5 @@ return [
     'auth' => $auth,
     'chats' => new ChatRepository($config->string('storage.data_dir')),
     'images' => $imageStorage,
-    'client' => new NeurogateClient($config, new ResponseImageExtractor()),
+    'client' => new NeurogateClient($config, new ResponseImageExtractor(), new ResponsesTransport($config)),
 ];

@@ -176,8 +176,9 @@
         }
 
         const requestRefs = state.galleryRefs.slice();
+        const requestImageSettings = requestMode === 'image' ? pendingImageSettings(form) : null;
         const optimisticMessage = requestMode === 'image'
-            ? pendingImageMessage(prompt, requestRefs, Array.from($('[data-ref-input]').files || []))
+            ? pendingImageMessage(prompt, requestRefs, Array.from($('[data-ref-input]').files || []), requestImageSettings)
             : null;
 
         form.set('mode', requestMode);
@@ -329,6 +330,8 @@
                 + (message.pending ? ' is-pending-message' : '');
             article.append(child('div', messageHeadText(message, view), 'message-head'));
             article.append(messageBubble(message, view));
+            const imageRequestDetails = pendingImageRequestDetails(message);
+            if (imageRequestDetails) { article.append(imageRequestDetails); }
             if (message.errorDetails) { article.append(window.ChatErrors.panel(message.errorDetails)); }
 
             if (displayImages.length) {
@@ -419,7 +422,25 @@
         });
     }
 
-    function pendingImageMessage(prompt, galleryRefs, files) {
+    function pendingImageSettings(form) {
+        const count = Math.min(10, Math.max(1, parseInt(String(form.get('image_count') || '1'), 10) || 1));
+        const checkedRatio = document.querySelector('input[name="ratio"]:checked');
+        const ratio = String(form.get('ratio') || (checkedRatio ? checkedRatio.value : '') || '').trim();
+        const ratioLabelNode = checkedRatio && checkedRatio.parentElement
+            ? checkedRatio.parentElement.querySelector('span')
+            : null;
+        const ratioLabel = ratioLabelNode && ratioLabelNode.textContent.trim() !== ''
+            ? ratioLabelNode.textContent.trim()
+            : ratio;
+
+        return {
+            imageCount: count,
+            ratio: ratio,
+            ratioLabel: ratioLabel,
+        };
+    }
+
+    function pendingImageMessage(prompt, galleryRefs, files, settings) {
         const objectUrls = [];
         const images = [];
 
@@ -458,9 +479,33 @@
             createdAt: new Date().toISOString(),
             mode: 'image',
             images: images,
+            settings: settings || null,
             pending: true,
             objectUrls: objectUrls,
         };
+    }
+
+    function pendingImageRequestDetails(message) {
+        const text = pendingImageRequestDetailsText(message);
+
+        return text === '' ? null : child('div', text, 'message-request-settings');
+    }
+
+    function pendingImageRequestDetailsText(message) {
+        if (!message || !message.pending || message.mode !== 'image') {
+            return '';
+        }
+
+        const settings = message.settings && typeof message.settings === 'object' ? message.settings : {};
+        const count = Math.min(10, Math.max(1, parseInt(String(settings.imageCount || '1'), 10) || 1));
+        const ratio = String(settings.ratioLabel || settings.ratio || '').trim();
+        const parts = ['Картинок: ' + count];
+
+        if (ratio !== '') {
+            parts.push('Пропорции: ' + ratio);
+        }
+
+        return parts.join(' · ');
     }
 
     function messageImagesForDisplay(message, view) {

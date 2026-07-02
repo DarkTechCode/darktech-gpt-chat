@@ -576,11 +576,25 @@ p {
   color: var(--user-bubble-text);
 }
 
+.message-request-settings {
+  width: fit-content;
+  max-width: 100%;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.message.user .message-request-settings {
+  margin-left: auto;
+  text-align: right;
+}
+
 .message.is-error .bubble {
   border: 1px solid var(--danger);
 }
 
 .message.is-pending-message .bubble,
+.message.is-pending-message .message-request-settings,
 .message.is-pending-message .image-strip {
   opacity: 0.82;
 }

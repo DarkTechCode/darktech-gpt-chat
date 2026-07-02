@@ -227,31 +227,40 @@ function generateImageVariant(
     $usage = null;
     $responseIds = [];
     $texts = [];
+    $parallelRequestLimit = imageParallelRequestLimit($config, $imageCount);
 
     while (count($savedImages) < $imageCount) {
-        $result = $client->generate($prompt, $dataUrls, $imageSize);
-        $resultUsage = is_array($result['usage']) ? $result['usage'] : null;
-        $remaining = $imageCount - count($savedImages);
-        $resultImages = array_slice($result['images'], 0, $remaining);
+        $requestCount = min($parallelRequestLimit, $imageCount - count($savedImages));
+        $results = $client->generateMany($prompt, $dataUrls, $imageSize, $requestCount);
 
-        if (count($resultImages) === 0) {
-            throw new RuntimeException('API did not return generated images.');
-        }
+        foreach ($results as $result) {
+            if (count($savedImages) >= $imageCount) {
+                break;
+            }
 
-        $savedImages = array_merge($savedImages, $images->saveGenerated(
-            $resultImages,
-            $config->string('image.output_format', 'png'),
-            $prompt,
-            $resultUsage
-        ));
-        $usage = addUsageTotals($usage, $resultUsage);
+            $resultUsage = is_array($result['usage']) ? $result['usage'] : null;
+            $remaining = $imageCount - count($savedImages);
+            $resultImages = array_slice($result['images'], 0, $remaining);
 
-        if ($result['id'] !== null) {
-            $responseIds[] = $result['id'];
-        }
+            if (count($resultImages) === 0) {
+                throw new RuntimeException('API did not return generated images.');
+            }
 
-        if (is_string($result['text']) && trim($result['text']) !== '') {
-            $texts[] = $result['text'];
+            $savedImages = array_merge($savedImages, $images->saveGenerated(
+                $resultImages,
+                $config->string('image.output_format', 'png'),
+                $prompt,
+                $resultUsage
+            ));
+            $usage = addUsageTotals($usage, $resultUsage);
+
+            if ($result['id'] !== null) {
+                $responseIds[] = $result['id'];
+            }
+
+            if (is_string($result['text']) && trim($result['text']) !== '') {
+                $texts[] = $result['text'];
+            }
         }
     }
 
@@ -275,6 +284,7 @@ function generateImageVariant(
                 'ratio' => $ratio,
                 'size' => $imageSize,
                 'imageCount' => $imageCount,
+                'parallelRequestLimit' => $parallelRequestLimit,
                 'usage' => $usage,
             ],
         ]),
@@ -548,6 +558,13 @@ function selectedImageCount(): int
     }
 
     return $count;
+}
+
+function imageParallelRequestLimit(Config $config, int $imageCount): int
+{
+    $limit = $config->integer('image.max_parallel_requests', 4);
+
+    return min($imageCount, max(1, $limit));
 }
 
 function formatDurationMs(int $durationMs): string
