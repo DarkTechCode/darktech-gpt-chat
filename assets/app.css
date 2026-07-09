@@ -57,6 +57,7 @@
   --gallery-width: 600px;
   --gallery-columns: 4;
   --resize-handle-width: 6px;
+  --slider-duration: 0ms;
 }
 
 html[data-theme="light"] {
@@ -322,6 +323,12 @@ p {
   overflow: hidden;
 }
 
+.app-shell > .sidebar,
+.app-shell > .chat-panel,
+.app-shell > .gallery-panel {
+  min-height: 0;
+}
+
 .app-shell:not(.is-image-mode) {
   grid-template-columns:
     var(--sidebar-width)
@@ -468,6 +475,85 @@ p {
   background: var(--accent);
 }
 
+.sidebar-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-search-toggle {
+  flex: 0 0 auto;
+  font-size: 16px;
+}
+
+.chat-search-toggle.is-active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.chat-search-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-dark);
+}
+
+.chat-search-input {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.chat-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.chat-filters {
+  display: flex;
+  gap: 6px;
+}
+
+.chat-filter {
+  flex: 1 1 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.chat-filter:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.chat-filter.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.chat-list-empty {
+  padding: 16px 12px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
 .chat-list {
   padding: 8px;
   overflow: auto;
@@ -520,9 +606,19 @@ p {
   min-height: 0;
   overflow: hidden;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   background: var(--bg);
 }
+
+/* Явное размещение в grid-строках, чтобы порядок детей
+   (config-warning/settings-page могут отсутствовать или быть
+   скрытыми) не ломал раскладку. settings-page задаёт свой grid-row
+   отдельно (2 / -1, перекрывает сообщения и композер). */
+.chat-panel > .topbar { grid-row: 1; }
+.chat-panel > .config-warning { grid-row: 2; }
+.chat-panel > .messages { grid-row: 3; }
+.chat-panel > .composer { grid-row: 4; }
 
 .config-warning {
   padding: 10px 16px;
@@ -532,6 +628,7 @@ p {
 
 .messages {
   min-height: 0;
+  min-width: 0;
   overflow: auto;
   padding: 18px 18px 34px;
   overscroll-behavior: contain;
@@ -549,10 +646,7 @@ p {
   gap: 8px;
   max-width: 920px;
   margin: 0 auto 18px;
-}
-
-.message:last-child {
-  margin-bottom: 200px;
+  min-width: 0;
 }
 
 .message-head {
@@ -563,11 +657,46 @@ p {
 .bubble {
   width: fit-content;
   max-width: 100%;
+  min-width: 0;
   padding: 12px 14px;
   border-radius: 8px;
   background: var(--panel);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.bubble.has-regenerate {
+  position: relative;
+  padding-right: 40px;
+}
+
+.regenerate-button {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  font-size: 16px;
+}
+
+.bubble.has-retry {
+  position: relative;
+  padding-right: 40px;
+}
+
+.retry-button {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  font-size: 16px;
+  color: var(--danger);
+}
+
+.retry-button:hover {
+  background: var(--danger);
+  color: var(--panel);
 }
 
 .message.user .bubble {
@@ -601,6 +730,7 @@ p {
 
 .message.assistant .message-markdown {
   width: 100%;
+  min-width: 0;
   white-space: normal;
 }
 
@@ -609,6 +739,13 @@ p {
 }
 
 .message-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+/* <p> перед кнопкой регенерации/повтора — без нижнего отступа,
+   т.к. кнопка стала последним ребёнком bubble. */
+.bubble.has-regenerate > p:last-of-type,
+.bubble.has-retry > p:last-of-type {
   margin-bottom: 0;
 }
 
@@ -1005,5 +1142,187 @@ p {
   .settings-form footer .primary-button,
   .settings-form footer .ghost-button {
     width: 100%;
+  }
+}
+
+/* === Планшет (721–1050px): sidebar + чат, галерея как drawer === */
+@media (max-width: 1050px) {
+  .app-shell,
+  .app-shell:not(.is-image-mode) {
+    grid-template-columns: 280px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .resize-handle {
+    display: none;
+  }
+
+  /* Gallery — всегда drawer на планшете (display:none из базового
+     правила для не-image-mode здесь нейтрализуется по специфичности). */
+  .app-shell .gallery-panel,
+  .app-shell:not(.is-image-mode) .gallery-panel {
+    display: flex;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    width: 100%;
+    height: 100dvh;
+    border-right: 0;
+    border-left: 0;
+    transform: translateX(100%);
+    transition: transform 0.22s ease;
+  }
+
+  .app-shell.is-gallery-open .gallery-panel {
+    transform: none;
+    box-shadow: var(--shadow);
+  }
+
+  .gallery-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 25;
+    background: var(--modal-backdrop);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+  }
+
+  .app-shell.is-gallery-open .gallery-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* === Мобильный (≤720px): 3 вкладки, переключение панелей === */
+@media (max-width: 720px) {
+  body {
+    display: flex;
+    flex-direction: column;
+    min-width: 320px;
+  }
+
+  .mobile-tabs {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 0;
+    background: var(--panel-dark);
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .mobile-tab {
+    flex: 1 1 0;
+    min-height: 52px;
+    padding: 0 8px;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .mobile-tab.is-active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+  }
+
+  .app-shell {
+    flex: 1 1 auto;
+    display: block;
+    height: auto;
+    min-height: 0;
+  }
+
+  /* Видимость панелей по data-view */
+  .app-shell .sidebar,
+  .app-shell .chat-panel,
+  .app-shell .gallery-panel {
+    display: none;
+  }
+
+  .app-shell[data-view="chats"] .sidebar {
+    display: flex;
+    width: 100%;
+    height: 100%;
+  }
+
+  .app-shell[data-view="chat"] .chat-panel {
+    display: grid;
+    width: 100%;
+    height: 100%;
+  }
+
+  .app-shell[data-view="gallery"] .gallery-panel {
+    display: flex;
+    position: static;
+    transform: none;
+    width: 100%;
+    height: 100%;
+    border-left: 0;
+    box-shadow: none;
+  }
+
+  .app-shell[data-view="gallery"] .gallery-backdrop {
+    display: none;
+  }
+
+  .resize-handle,
+  .gallery-backdrop {
+    display: none;
+  }
+
+  /* Заголовок чата во всю ширину */
+  .topbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+
+  .topbar .title-row {
+    width: 100%;
+  }
+
+  .topbar h1 {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Кнопки действий сверху над заголовком чата на мобильном.
+     DOM-порядок сохранён ради доступности, меняется только визуальный. */
+  .topbar-actions {
+    order: -1;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .status-pill {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sidebar-head,
+  .sidebar-foot,
+  .gallery-head,
+  .topbar {
+    min-height: 0;
+  }
+
+  .messages {
+    padding: 14px 12px 24px;
   }
 }

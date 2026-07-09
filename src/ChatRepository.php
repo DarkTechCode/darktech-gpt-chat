@@ -226,6 +226,90 @@ final class ChatRepository
         throw new RuntimeException('Чат не найден.');
     }
 
+    public function retryContext(string $chatId, string $messageId): array
+    {
+        $data = $this->readData();
+
+        foreach ($data['chats'] as $chat) {
+            if ($chat['id'] !== $chatId) {
+                continue;
+            }
+
+            $messages = isset($chat['messages']) && is_array($chat['messages']) ? $chat['messages'] : [];
+
+            foreach ($messages as $index => $message) {
+                if (!is_array($message) || ($message['id'] ?? '') !== $messageId) {
+                    continue;
+                }
+
+                return $this->requestContextForRetry($messages, $message, $index);
+            }
+
+            throw new RuntimeException('Сообщение не найдено.');
+        }
+
+        throw new RuntimeException('Чат не найден.');
+    }
+
+    public function replaceMessage(string $chatId, string $messageId, array $message): array
+    {
+        return $this->withExclusiveLock(function (array $data) use ($chatId, $messageId, $message): array {
+            foreach ($data['chats'] as $chatIndex => $chat) {
+                if ($chat['id'] !== $chatId) {
+                    continue;
+                }
+
+                foreach ($chat['messages'] as $messageIndex => $current) {
+                    if (($current['id'] ?? '') !== $messageId) {
+                        continue;
+                    }
+
+                    $chat['messages'][$messageIndex] = $message;
+                    $chat['updatedAt'] = isset($message['createdAt']) ? (string) $message['createdAt'] : $this->now();
+                    $data['chats'][$chatIndex] = $chat;
+
+                    return ['data' => $data, 'result' => $this->withUsage($chat)];
+                }
+
+                throw new RuntimeException('Сообщение не найдено.');
+            }
+
+            throw new RuntimeException('Чат не найден.');
+        });
+    }
+
+    private function requestContextForRetry(array $messages, array $message, int $messageIndex): array
+    {
+        if (($message['role'] ?? '') !== 'assistant') {
+            throw new RuntimeException('Повтор доступен только для ответов.');
+        }
+
+        $mode = ($message['mode'] ?? '') === 'image' ? 'image' : 'chat';
+
+        for ($index = $messageIndex - 1; $index >= 0; $index--) {
+            $request = $messages[$index] ?? null;
+
+            if (!is_array($request) || ($request['role'] ?? '') !== 'user' || ($request['mode'] ?? 'chat') !== $mode) {
+                continue;
+            }
+
+            $prompt = isset($request['content']) ? trim((string) $request['content']) : '';
+
+            if ($prompt === '') {
+                throw new RuntimeException('Текст запроса не найден.');
+            }
+
+            return [
+                'prompt' => $prompt,
+                'mode' => $mode,
+                'images' => isset($request['images']) && is_array($request['images']) ? $request['images'] : [],
+                'settings' => isset($request['settings']) && is_array($request['settings']) ? $request['settings'] : [],
+            ];
+        }
+
+        throw new RuntimeException('Исходный запрос не найден.');
+    }
+
     public function rename(string $chatId, string $title): array
     {
         return $this->withExclusiveLock(function (array $data) use ($chatId, $title): array {

@@ -32,6 +32,14 @@
         }
 
         setSettingsError('');
+
+        /* На мобильном настройки живут внутри .chat-panel, которая видна
+           только во вкладке «чат». Переключаемся, чтобы пользователь сразу
+           увидел окно настроек из любой вкладки. Безопасно на десктопе/планшете. */
+        if (window.ChatMobile && typeof window.ChatMobile.setView === 'function') {
+            window.ChatMobile.setView('chat');
+        }
+
         showSettings();
         fillAppearance($('[data-settings-form]'));
         setActiveNav('settings-appearance');
@@ -198,13 +206,14 @@
     function fillAppearance(form) {
         const appearance = window.ChatAppearance
             ? window.ChatAppearance.current()
-            : { theme: 'dark', fontSize: 14 };
+            : { theme: 'dark', fontSize: 14, sliderDuration: 0 };
         const layout = window.ChatLayout
             ? window.ChatLayout.current()
             : { sidebar: 400, gallery: 600 };
 
         setValue(form, 'appearance.theme', appearance.theme);
         setValue(form, 'appearance.fontSize', appearance.fontSize);
+        setValue(form, 'appearance.sliderDuration', appearance.sliderDuration);
         setValue(form, 'appearance.sidebarWidth', layout.sidebar);
         setValue(form, 'appearance.galleryWidth', layout.gallery);
     }
@@ -214,6 +223,7 @@
             window.ChatAppearance.save({
                 theme: value(form, 'appearance.theme'),
                 fontSize: value(form, 'appearance.fontSize'),
+                sliderDuration: value(form, 'appearance.sliderDuration'),
             });
         }
 

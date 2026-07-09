@@ -24,6 +24,11 @@
             images: [],
             index: 0,
         },
+        search: {
+            open: false,
+            query: '',
+            filter: 'all',
+        },
     };
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -71,10 +76,68 @@
         });
         $('[data-modal-prev]').addEventListener('click', function () { stepModalImage(-1); });
         $('[data-modal-next]').addEventListener('click', function () { stepModalImage(1); });
+        bindModalSwipe();
+        document.addEventListener('keydown', handleModalKeys);
         $('[data-copy-link]').addEventListener('click', copyModalLink);
         $('[data-open-chat]').addEventListener('click', openModalChat);
         $('[data-modal-reference]').addEventListener('click', addModalReference);
+        bindChatSearch();
         renderMode();
+    }
+
+    function bindChatSearch() {
+        const toggle = $('[data-toggle-chat-search]');
+        const panel = $('[data-chat-search-panel]');
+        const input = $('[data-chat-search-input]');
+
+        toggle.addEventListener('click', function () {
+            setChatSearchOpen(!state.search.open);
+            if (state.search.open) {
+                input.focus();
+            }
+        });
+
+        input.addEventListener('input', function () {
+            state.search.query = input.value.trim().toLowerCase();
+            renderSidebar();
+        });
+
+        document.querySelectorAll('[data-chat-filter]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                setChatFilter(button.dataset.chatFilter);
+            });
+        });
+    }
+
+    function setChatSearchOpen(open) {
+        state.search.open = open;
+        const panel = $('[data-chat-search-panel]');
+        const toggle = $('[data-toggle-chat-search]');
+
+        panel.hidden = !open;
+        toggle.classList.toggle('is-active', open);
+        toggle.setAttribute('aria-pressed', open ? 'true' : 'false');
+
+        if (!open) {
+            const input = $('[data-chat-search-input]');
+            if (input) {
+                input.value = '';
+            }
+            state.search.query = '';
+            setChatFilter('all');
+        }
+
+        renderSidebar();
+    }
+
+    function setChatFilter(filter) {
+        state.search.filter = filter;
+
+        document.querySelectorAll('[data-chat-filter]').forEach(function (button) {
+            button.classList.toggle('is-active', button.dataset.chatFilter === filter);
+        });
+
+        renderSidebar();
     }
 
     async function loadAll() {
@@ -111,6 +174,7 @@
         const chat = await createChat();
 
         if (chat) {
+            if (window.ChatMobile) { window.ChatMobile.setView('chat'); }
             focusPrompt();
         }
     }
@@ -121,6 +185,7 @@
         appendLocalMessages(chatId);
         renderSidebar();
         renderChat();
+        if (window.ChatMobile) { window.ChatMobile.setView('chat'); }
     }
 
     function appendLocalMessages(chatId) {
@@ -267,12 +332,37 @@
         }
     }
 
+    function matchesChatSearch(chat) {
+        if (state.search.filter === 'images' && !chat.imageCount) {
+            return false;
+        }
+
+        if (state.search.filter === 'text' && chat.imageCount) {
+            return false;
+        }
+
+        if (!state.search.query) {
+            return true;
+        }
+
+        const haystack = ((chat.title || '') + ' ' + (chat.preview || '')).toLowerCase();
+
+        return haystack.indexOf(state.search.query) !== -1;
+    }
+
     function renderSidebar() {
         const list = $('[data-chat-list]');
         list.innerHTML = '';
         $('[data-global-usage]').textContent = 'все чаты: ' + window.UsageFormatter.short(state.usage);
 
-        state.chats.forEach(function (chat) {
+        const visible = state.chats.filter(matchesChatSearch);
+
+        if (state.search.open && (state.search.query || state.search.filter !== 'all') && visible.length === 0) {
+            list.append(child('p', 'Ничего не найдено', 'chat-list-empty'));
+            return;
+        }
+
+        visible.forEach(function (chat) {
             const pending = state.pending[chat.id] || null;
             const item = document.createElement('button');
             item.type = 'button';
@@ -324,7 +414,9 @@
             const view = messageView(message);
             const displayImages = messageImagesForDisplay(message, view);
             const imageIndex = activeImageIndex(message, view);
+            preloadVariantImages(message, view);
             const article = document.createElement('article');
+            article.dataset.messageId = message.id || '';
             article.className = 'message ' + message.role
                 + (message.error ? ' is-error' : '')
                 + (message.pending ? ' is-pending-message' : '');
@@ -337,7 +429,10 @@
             if (displayImages.length) {
                 article.append(imageStrip(displayImages, message.role, state.activeChat.id, view.images, imageIndex));
             }
-            if (canRegenerateImage(message)) { article.append(imageVariantControls(message)); }
+            if (canRegenerateImage(message)) {
+                const variantControls = imageVariantControls(message);
+                if (variantControls) { article.append(variantControls); }
+            }
 
             messages.append(article);
         });
@@ -356,6 +451,14 @@
 
         if (message.role === 'assistant' && window.ChatMarkdown) {
             window.ChatMarkdown.render(bubble, content || '');
+            if (canRegenerateImage(message)) {
+                bubble.classList.add('has-regenerate');
+                bubble.append(regenerateButton(message));
+            }
+            if (canRetry(message)) {
+                bubble.classList.add('has-retry');
+                bubble.append(retryButton(message));
+            }
             return bubble;
         }
 
@@ -518,6 +621,38 @@
         return [images[activeImageIndex(message, view)]];
     }
 
+    const preloadedUrls = new Set();
+
+    /* Предзагрузка картинок всех вариантов в кэш браузера, чтобы смена
+       и картинок, и вариантов стрелками была мгновенной. */
+    function preloadVariantImages(message, view) {
+        if (message.role !== 'assistant' || message.mode !== 'image') {
+            return;
+        }
+
+        const sources = [view];
+        imageVariants(message).forEach(function (variant) {
+            if (variant && variant.id !== (view.variantId || '') && Array.isArray(variant.images)) {
+                sources.push(variant);
+            }
+        });
+
+        sources.forEach(function (source) {
+            const images = Array.isArray(source.images) ? source.images : [];
+            images.forEach(function (image) {
+                const url = image && image.url ? image.url : '';
+
+                if (url === '' || preloadedUrls.has(url)) {
+                    return;
+                }
+
+                preloadedUrls.add(url);
+                const preloader = new Image();
+                preloader.src = url;
+            });
+        });
+    }
+
     function messageView(message) {
         const variant = activeVariant(message);
 
@@ -567,6 +702,22 @@
         return message.role === 'assistant' && message.mode === 'image' && !message.error;
     }
 
+    function canRetry(message) {
+        if (message.retrying) {
+            return false;
+        }
+
+        return message.role === 'assistant'
+            && message.error
+            && !message.local
+            && Boolean(message.id)
+            && !isTempId(message.id);
+    }
+
+    function isTempId(id) {
+        return typeof id === 'string' && id.indexOf('temp_') === 0;
+    }
+
     function activeImageIndex(message, view) {
         const images = Array.isArray(view.images) ? view.images : [];
 
@@ -588,8 +739,138 @@
             return;
         }
 
-        state.imageIndexes[imageIndexKey(message)] = Math.min(images.length - 1, Math.max(0, index));
+        const newIndex = Math.min(images.length - 1, Math.max(0, index));
+        state.imageIndexes[imageIndexKey(message)] = newIndex;
+
+        /* Оптимистичное обновление: меняем <img> и подпись напрямую,
+           без полного ререндера чата. Картинки предзагружены, поэтому
+           смена мгновенная. Если DOM не найден — откат на renderChat. */
+        if (updateActiveImageDom(message, view, newIndex)) {
+            return;
+        }
+
         renderChat(false);
+    }
+
+    function updateActiveImageDom(message, view, imageIndex) {
+        const article = document.querySelector('.message[data-message-id="' + cssEscape(message.id || '') + '"]');
+        const card = article ? article.querySelector('.image-strip-large .image-card-large') : null;
+
+        if (!card) {
+            return false;
+        }
+
+        const image = Array.isArray(view.images) ? view.images[imageIndex] : null;
+
+        if (!image) {
+            return false;
+        }
+
+        const img = card.querySelector('img');
+        const span = card.querySelector('span');
+
+        if (img) {
+            img.alt = window.UsageFormatter.imageName(image);
+            img.src = image.url;
+        }
+
+        if (span) {
+            span.textContent = window.UsageFormatter.imageLabel(image);
+        }
+
+        updateImageVariantCounters(article, imageIndex, Array.isArray(view.images) ? view.images.length : 0, 'Картинка');
+
+        return true;
+    }
+
+    function updateActiveVariantDom(message, view) {
+        const article = document.querySelector('.message[data-message-id="' + cssEscape(message.id || '') + '"]');
+
+        if (!article) {
+            return false;
+        }
+
+        /* Сбрасываем индекс картинки: у каждого варианта своя нумерация. */
+        state.imageIndexes[imageIndexKey(message)] = 0;
+
+        const bubble = article.querySelector('.bubble');
+
+        if (bubble) {
+            const hasRegenerate = bubble.classList.contains('has-regenerate');
+            const regenerateEl = bubble.querySelector('.regenerate-button');
+
+            if (window.ChatMarkdown) {
+                window.ChatMarkdown.render(bubble, view.content || '');
+            }
+
+            if (hasRegenerate) {
+                bubble.classList.add('has-regenerate');
+            }
+
+            /* Переотрендер markdown очищает innerHTML, поэтому кнопку
+               регенерации нужно вернуть заново. */
+            if (hasRegenerate && message) {
+                const canRegen = canRegenerateImage(message);
+                const existing = bubble.querySelector('.regenerate-button');
+
+                if (canRegen && !existing) {
+                    bubble.append(regenerateButton(message));
+                } else if (!canRegen && existing) {
+                    existing.remove();
+                }
+            }
+        }
+
+        /* Обновляем счётчик «Вариант N/M» и disabled кнопок варианта. */
+        const variants = imageVariants(message);
+        const variantIndex = activeVariantIndex(message);
+        updateImageVariantCounters(article, variantIndex, variants.length, 'Вариант');
+
+        /* Картинка: если число картинок совпадает с текущим DOM — обновляем
+           напрямую, иначе откатываемся на полный ререндер. */
+        const imageCount = Array.isArray(view.images) ? view.images.length : 0;
+        const domImageNav = article.querySelector('.image-variant-count[data-count="image"]');
+        const domHasImageNav = Boolean(domImageNav);
+
+        if ((imageCount > 1) !== domHasImageNav) {
+            renderChat(false);
+            return true;
+        }
+
+        if (imageCount > 0) {
+            updateActiveImageDom(message, view, 0);
+        }
+
+        return true;
+    }
+
+    function updateImageVariantCounters(article, index, total, prefix) {
+        if (!article || total <= 0) {
+            return;
+        }
+
+        const label = prefix + ' ' + (index + 1) + ' / ' + total;
+        const kind = prefix === 'Картинка' ? 'image' : 'variant';
+
+        const counter = article.querySelector('.image-variant-count[data-count="' + kind + '"]');
+        if (counter) {
+            counter.textContent = label;
+        }
+
+        const prev = article.querySelector('.image-variant-button[data-nav="prev-' + kind + '"]');
+        const next = article.querySelector('.image-variant-button[data-nav="next-' + kind + '"]');
+        if (prev) { prev.disabled = index <= 0; }
+        if (next) { next.disabled = index >= total - 1; }
+    }
+
+    function cssEscape(value) {
+        if (window.CSS && typeof window.CSS.escape === 'function') {
+            return window.CSS.escape(value);
+        }
+
+        return String(value).replace(/[^a-zA-Z0-9_-]/g, function (char) {
+            return '\\' + char;
+        });
     }
 
     function imageIndexKey(message) {
@@ -612,32 +893,48 @@
         controls.className = 'image-variant-controls';
 
         if (images.length > 1) {
-            controls.append(variantButton('‹', 'Предыдущая картинка', function () {
-                setActiveImageIndex(message, imageIndex - 1);
-            }, imageIndex <= 0));
-            controls.append(child('span', 'Картинка ' + (imageIndex + 1) + ' / ' + images.length, 'image-variant-count'));
-            controls.append(variantButton('›', 'Следующая картинка', function () {
-                setActiveImageIndex(message, imageIndex + 1);
-            }, imageIndex >= images.length - 1));
+            const prevImage = variantButton('‹', 'Предыдущая картинка', function () {
+                const current = activeImageIndex(message, messageView(message));
+                setActiveImageIndex(message, current - 1);
+            }, imageIndex <= 0);
+            prevImage.dataset.nav = 'prev-image';
+            controls.append(prevImage);
+            const imageCount = child('span', 'Картинка ' + (imageIndex + 1) + ' / ' + images.length, 'image-variant-count');
+            imageCount.dataset.count = 'image';
+            controls.append(imageCount);
+            const nextImage = variantButton('›', 'Следующая картинка', function () {
+                const current = activeImageIndex(message, messageView(message));
+                setActiveImageIndex(message, current + 1);
+            }, imageIndex >= images.length - 1);
+            nextImage.dataset.nav = 'next-image';
+            controls.append(nextImage);
         }
 
         if (variants.length > 1) {
-            controls.append(variantButton('‹', 'Предыдущий вариант', function () {
-                activateImageVariant(message, activeIndex - 1).catch(function (exception) {
+            const prevVariant = variantButton('‹', 'Предыдущий вариант', function () {
+                const current = activeVariantIndex(message);
+                activateImageVariant(message, current - 1).catch(function (exception) {
                     appendClientError('Не удалось переключить вариант.', exception);
                 });
-            }, pending || activeIndex <= 0));
-            controls.append(child('span', 'Вариант ' + (activeIndex + 1) + ' / ' + variants.length, 'image-variant-count'));
-            controls.append(variantButton('›', 'Следующий вариант', function () {
-                activateImageVariant(message, activeIndex + 1).catch(function (exception) {
+            }, pending || activeIndex <= 0);
+            prevVariant.dataset.nav = 'prev-variant';
+            controls.append(prevVariant);
+            const variantCount = child('span', 'Вариант ' + (activeIndex + 1) + ' / ' + variants.length, 'image-variant-count');
+            variantCount.dataset.count = 'variant';
+            controls.append(variantCount);
+            const nextVariant = variantButton('›', 'Следующий вариант', function () {
+                const current = activeVariantIndex(message);
+                activateImageVariant(message, current + 1).catch(function (exception) {
                     appendClientError('Не удалось переключить вариант.', exception);
                 });
-            }, pending || activeIndex >= variants.length - 1));
+            }, pending || activeIndex >= variants.length - 1);
+            nextVariant.dataset.nav = 'next-variant';
+            controls.append(nextVariant);
         }
 
-        controls.append(variantButton('↻', 'Перегенерировать', function () {
-            regenerateImage(message);
-        }, pending));
+        if (controls.children.length === 0) {
+            return null;
+        }
 
         return controls;
     }
@@ -653,6 +950,30 @@
         return button;
     }
 
+    function regenerateButton(message) {
+        const pending = state.activeChat && isChatPending(state.activeChat.id);
+        const button = child('button', '↻', 'icon-button image-variant-button regenerate-button');
+        button.type = 'button';
+        button.title = 'Перегенерировать';
+        button.setAttribute('aria-label', 'Перегенерировать');
+        button.disabled = Boolean(pending);
+        button.addEventListener('click', function () { regenerateImage(message); });
+
+        return button;
+    }
+
+    function retryButton(message) {
+        const pending = state.activeChat && isChatPending(state.activeChat.id);
+        const button = child('button', '↻', 'icon-button image-variant-button retry-button');
+        button.type = 'button';
+        button.title = 'Повторить запрос';
+        button.setAttribute('aria-label', 'Повторить запрос');
+        button.disabled = Boolean(pending);
+        button.addEventListener('click', function () { retryMessage(message); });
+
+        return button;
+    }
+
     async function activateImageVariant(message, index) {
         if (!state.activeChat) {
             return;
@@ -661,25 +982,37 @@
         const variants = imageVariants(message);
         const variant = variants[index];
 
-        if (!variant || !variant.id) {
+        if (!variant || !variant.id || variant.id === message.activeVariantId) {
             return;
         }
 
-        const form = new FormData();
-        form.append('action', 'activate_variant');
-        form.append('id', state.activeChat.id);
-        form.append('message_id', message.id);
-        form.append('variant_id', variant.id);
+        /* Оптимистичное переключение: меняем активный вариант локально
+           и обновляем DOM напрямую. Картинки предзагружены, поэтому
+           смена мгновенная. Если DOM не найден — откат на renderChat. */
+        message.activeVariantId = variant.id;
+        const view = messageView(message);
 
-        const data = await request('api/chats.php', { method: 'POST', body: form });
-
-        if (state.activeChat && state.activeChat.id === data.chat.id) {
-            state.activeChat = data.chat;
-            appendLocalMessages(data.chat.id);
+        if (!updateActiveVariantDom(message, view)) {
             renderChat(false);
         }
 
-        await loadChatSummaries();
+        /* Сохранение выбора на сервер — в фоне, без блокировки UI. */
+        syncVariantActivation(state.activeChat.id, message.id, variant.id);
+    }
+
+    function syncVariantActivation(chatId, messageId, variantId) {
+        const form = new FormData();
+        form.append('action', 'activate_variant');
+        form.append('id', chatId);
+        form.append('message_id', messageId);
+        form.append('variant_id', variantId);
+
+        request('api/chats.php', { method: 'POST', body: form }).then(function () {
+            loadChatSummaries();
+        }).catch(function () {
+            /* Фоновая синхронизация не критична: выбор сохранится
+               при следующем действии или перезагрузке. */
+        });
     }
 
     async function regenerateImage(message) {
@@ -721,6 +1054,69 @@
             }
         } finally {
             finishChatPending(chatId);
+        }
+    }
+
+    async function retryMessage(message) {
+        const chatId = state.activeChat ? state.activeChat.id : '';
+
+        if (!chatId || isChatPending(chatId)) {
+            return;
+        }
+
+        const retryMode = message.mode === 'image' ? 'image' : 'chat';
+        const form = new FormData();
+        form.append('action', 'retry');
+        form.append('chat_id', chatId);
+        form.append('message_id', message.id);
+
+        markMessageRetrying(message);
+
+        startChatPending(chatId, retryMode);
+
+        try {
+            const data = await request('api/generate.php', { method: 'POST', body: form });
+
+            if (state.activeChat && state.activeChat.id === data.chat.id) {
+                state.activeChat = data.chat;
+                appendLocalMessages(data.chat.id);
+                renderChat();
+            }
+
+            await loadChatSummaries();
+            if (retryMode === 'image') { await loadGallery(0, false); }
+        } catch (exception) {
+            if (exception.payload && exception.payload.chat) {
+                if (state.activeChat && state.activeChat.id === exception.payload.chat.id) {
+                    state.activeChat = exception.payload.chat;
+                    appendLocalMessages(exception.payload.chat.id);
+                    renderChat();
+                }
+
+                await loadChatSummaries();
+                if (retryMode === 'image') { await loadGallery(0, false); }
+            } else {
+                appendClientError('Не удалось повторить запрос.', exception, null, chatId, retryMode);
+            }
+        } finally {
+            finishChatPending(chatId);
+        }
+    }
+
+    /* Оптимистично помечаем сообщение об ошибке как «в повторе», чтобы
+       скрыть кнопку и показать состояние ожидания до ответа сервера. */
+    function markMessageRetrying(message) {
+        if (!state.activeChat || !Array.isArray(state.activeChat.messages)) {
+            return;
+        }
+
+        const found = state.activeChat.messages.find(function (item) {
+            return item && item.id === message.id && item.error;
+        });
+
+        if (found) {
+            found.retrying = true;
+            renderChat(false);
         }
     }
 
@@ -818,14 +1214,60 @@
     function openModal(image, images, index) {
         const modal = $('[data-modal]');
         modal.hidden = false;
+
+        const chatId = state.activeChat ? state.activeChat.id : '';
+        const imageChatId = image && image.chatId ? image.chatId : chatId;
+
+        /* Картинка из текущего чата — перелистываем по всем его картинкам
+           (все сообщения и варианты). Картинка из галереи (другой чат) —
+           перелистываем в рамках переданного списка. */
+        if (imageChatId === chatId && chatId !== '') {
+            const allImages = chatImagesForModal();
+
+            if (allImages.length > 1) {
+                state.modal.images = allImages;
+                state.modal.index = findModalImageIndex(allImages, image);
+                renderModalImage();
+                return;
+            }
+        }
+
         state.modal.images = Array.isArray(images) && images.length > 0 ? images : [image];
         state.modal.index = index === undefined ? 0 : Math.min(state.modal.images.length - 1, Math.max(0, index));
         renderModalImage();
     }
 
+    function findModalImageIndex(images, target) {
+        const targetPath = target ? (target.path || target.url) : '';
+
+        if (targetPath !== '') {
+            const exact = images.findIndex(function (image) {
+                return (image.path || image.url) === targetPath;
+            });
+
+            if (exact !== -1) {
+                return exact;
+            }
+        }
+
+        const targetUrl = target ? target.url : '';
+        const byUrl = images.findIndex(function (image) {
+            return image.url === targetUrl;
+        });
+
+        return byUrl === -1 ? 0 : byUrl;
+    }
+
     function closeModal() {
         $('[data-modal]').hidden = true;
-        $('[data-modal-image]').src = '';
+        const track = $('[data-modal-track]');
+
+        if (track) {
+            track.innerHTML = '';
+            track.style.transform = '';
+            track.classList.remove('is-dragging');
+        }
+
         state.modal.images = [];
         state.modal.index = 0;
     }
@@ -837,6 +1279,154 @@
 
         state.modal.index = Math.min(state.modal.images.length - 1, Math.max(0, state.modal.index + delta));
         renderModalImage();
+    }
+
+    function handleModalKeys(event) {
+        const modal = $('[data-modal]');
+
+        if (!modal || modal.hidden) {
+            return;
+        }
+
+        /* Не перехватываем стрелки, пока пользователь печатает в поле ввода. */
+        const tag = event.target && event.target.tagName ? event.target.tagName.toLowerCase() : '';
+        const isEditable = tag === 'input' || tag === 'textarea' || tag === 'select' || event.target.isContentEditable;
+
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeModal();
+            return;
+        }
+
+        if (isEditable) {
+            return;
+        }
+
+        if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            stepModalImage(-1);
+        } else if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            stepModalImage(1);
+        }
+    }
+
+    /* Свайп картинкой: живое перемещение за пальцем/мышью, при отпускании —
+       перелистывание (если сдвиг больше порога) или плавный возврат. */
+    function bindModalSwipe() {
+        const wrap = document.querySelector('[data-modal-slider]');
+        const modal = document.querySelector('[data-modal]');
+
+        if (!wrap || !modal) {
+            return;
+        }
+
+        const threshold = 60;
+        let pointerId = null;
+        let startX = 0;
+        let startY = 0;
+        let deltaX = 0;
+        let dragging = false;
+        let decided = false;
+
+        wrap.addEventListener('pointerdown', function (event) {
+            if (modal.hidden || state.modal.images.length < 2) {
+                return;
+            }
+
+            /* Не начинаем свайп с кнопок навигации. */
+            if (event.target.closest('.modal-nav')) {
+                return;
+            }
+
+            pointerId = event.pointerId;
+            startX = event.clientX;
+            startY = event.clientY;
+            deltaX = 0;
+            dragging = false;
+            decided = false;
+            horizontal = false;
+        });
+
+        wrap.addEventListener('pointermove', function (event) {
+            if (pointerId !== event.pointerId) {
+                return;
+            }
+
+            const dx = event.clientX - startX;
+            const dy = event.clientY - startY;
+
+            /* Определяем направление жеста один раз — только если движение
+               уже заметное. Преимущественно вертикальное → отдаём скролл. */
+            if (!decided && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+                const horizontal = Math.abs(dx) > Math.abs(dy);
+                decided = true;
+
+                if (horizontal) {
+                    dragging = true;
+                    wrap.setPointerCapture(event.pointerId);
+                    const track = $('[data-modal-track]');
+
+                    if (track) { track.classList.add('is-dragging'); }
+                } else {
+                    pointerId = null;
+                    return;
+                }
+            }
+
+            if (!dragging) {
+                return;
+            }
+
+            let dxAdjusted = dx;
+            /* Сопротивление на краях списка: тянем за пределы —
+               смещение затухает (резина). */
+            const atStart = state.modal.index <= 0 && dx > 0;
+            const atEnd = state.modal.index >= state.modal.images.length - 1 && dx < 0;
+
+            if (atStart || atEnd) {
+                dxAdjusted = dx * 0.35;
+            }
+
+            deltaX = dxAdjusted;
+
+            /* Сдвиг track в пикселях (базовое положение + смещение драга). */
+            applyModalTrackPosition(dxAdjusted);
+        });
+
+        function endSwipe(event) {
+            if (pointerId !== event.pointerId) {
+                return;
+            }
+
+            const wasDragging = dragging;
+            const capturedDelta = deltaX;
+            pointerId = null;
+            dragging = false;
+            decided = false;
+            deltaX = 0;
+
+            const track = $('[data-modal-track]');
+
+            if (track) {
+                track.classList.remove('is-dragging');
+            }
+
+            if (!wasDragging) {
+                applyModalTrackPosition();
+                return;
+            }
+
+            /* Порог перелистывания по реальному смещению (с учётом резины). */
+            if (Math.abs(capturedDelta) > threshold) {
+                stepModalImage(capturedDelta < 0 ? 1 : -1);
+            } else {
+                applyModalTrackPosition();
+            }
+        }
+
+        wrap.addEventListener('pointerup', endSwipe);
+        wrap.addEventListener('pointercancel', endSwipe);
     }
 
     function renderModalImage() {
@@ -855,7 +1445,6 @@
         modal.dataset.chatId = image.chatId || '';
         $('[data-modal-title]').textContent = window.UsageFormatter.imageName(image);
         $('[data-modal-meta]').textContent = modalMeta(image);
-        $('[data-modal-image]').src = image.url;
         $('[data-download]').href = image.url;
         $('[data-open-image]').href = image.url;
         chatButton.hidden = !image.chatId;
@@ -864,6 +1453,47 @@
         nextButton.hidden = state.modal.images.length < 2;
         prevButton.disabled = state.modal.index <= 0;
         nextButton.disabled = state.modal.index >= state.modal.images.length - 1;
+
+        renderModalTrack();
+    }
+
+    function renderModalTrack() {
+        const track = $('[data-modal-track]');
+
+        if (!track) {
+            return;
+        }
+
+        track.classList.remove('is-dragging');
+        track.style.transform = '';
+
+        if (track.children.length !== state.modal.images.length) {
+            track.innerHTML = '';
+            state.modal.images.forEach(function (image) {
+                const slide = document.createElement('div');
+                slide.className = 'modal-slide';
+                const img = document.createElement('img');
+                img.alt = window.UsageFormatter.imageName(image);
+                img.src = image.url;
+                slide.append(img);
+                track.append(slide);
+            });
+        }
+
+        applyModalTrackPosition();
+    }
+
+    function applyModalTrackPosition(offsetPixels) {
+        const track = $('[data-modal-track]');
+        const wrap = document.querySelector('[data-modal-slider]');
+
+        if (!track) {
+            return;
+        }
+
+        const slideWidth = wrap ? wrap.getBoundingClientRect().width : track.getBoundingClientRect().width / Math.max(1, state.modal.images.length);
+        const shift = -state.modal.index * slideWidth + (offsetPixels || 0);
+        track.style.transform = 'translateX(' + shift + 'px)';
     }
 
     async function openModalChat() {
@@ -910,6 +1540,41 @@
     function imageForModal(image, chatId) {
         if (image.chatId || image.kind !== 'generated' || !chatId) { return image; }
         return Object.assign({}, image, { chatId: chatId, chatTitle: state.activeChat ? state.activeChat.title : '' });
+    }
+
+    /* Все картинки текущего чата для перелистывания в модалке:
+       из всех сообщений и всех вариантов каждого image-сообщения. */
+    function chatImagesForModal() {
+        const result = [];
+
+        if (!state.activeChat) {
+            return result;
+        }
+
+        const chatId = state.activeChat.id;
+        const messages = messagesWithPending(state.activeChat);
+
+        messages.forEach(function (message) {
+            if (message.role !== 'assistant' || message.mode !== 'image') {
+                return;
+            }
+
+            const sources = [messageView(message)];
+            imageVariants(message).forEach(function (variant) {
+                if (variant && variant.id !== (sources[0].variantId || '') && Array.isArray(variant.images)) {
+                    sources.push(variant);
+                }
+            });
+
+            sources.forEach(function (source) {
+                const images = Array.isArray(source.images) ? source.images : [];
+                images.forEach(function (image) {
+                    result.push(imageForModal(image, chatId));
+                });
+            });
+        });
+
+        return result;
     }
 
     async function request(url, options) {
@@ -1106,6 +1771,7 @@
             createdAt: now,
             mode: messageMode,
             error: true,
+            local: true,
             errorDetails: window.ChatErrors.detailsFromException(exception, title, messageMode),
         });
 

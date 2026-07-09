@@ -33,7 +33,6 @@
 .composer {
   display: grid;
   gap: 10px;
-  align-self: end;
   padding: 12px 18px max(12px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--line);
   background: var(--bg);
@@ -195,6 +194,12 @@
   grid-template-columns: repeat(var(--gallery-columns, 4), minmax(0, 1fr));
 }
 
+.gallery-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .gallery-more {
   display: flex;
   justify-content: center;
@@ -261,10 +266,11 @@
 .modal {
   position: fixed;
   inset: 0;
-  z-index: 20;
+  z-index: 40;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: 10px;
+  overflow: auto;
 }
 
 .modal-backdrop {
@@ -276,7 +282,7 @@
 .modal-card {
   position: relative;
   width: min(980px, 100%);
-  max-height: calc(100vh - 48px);
+  max-height: calc(100vh - 20px);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 12px;
@@ -287,6 +293,17 @@
   box-shadow: var(--shadow);
 }
 
+.modal-close-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
+  width: 32px;
+  height: 32px;
+  font-size: 18px;
+  line-height: 1;
+}
+
 .modal-card header,
 .modal-card footer {
   display: flex;
@@ -294,6 +311,11 @@
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.modal-card header {
+  /* Отступ справа под иконку закрытия, чтобы заголовок не перекрывался. */
+  padding-right: 36px;
 }
 
 .modal-card h2,
@@ -306,25 +328,49 @@
   font-size: 15px;
 }
 
-.modal-image-wrap {
+/* Слайдер-карусель: viewport прячет соседние слайды, track двигается. */
+.modal-slider-wrap {
   position: relative;
   min-height: 0;
-  display: grid;
-  place-items: center;
+  overflow: hidden;
+  touch-action: pan-y;
+  border-radius: 6px;
 }
 
-.modal-image-wrap img {
+.modal-slider-track {
+  display: flex;
+  height: 100%;
+  transition: transform var(--slider-duration, 0ms) ease;
+  will-change: transform;
+}
+
+.modal-slider-track.is-dragging {
+  transition: none;
+}
+
+.modal-slide {
+  flex: 0 0 100%;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-slide img {
   max-width: 100%;
-  max-height: 72vh;
+  max-height: 100%;
   margin: auto;
   border-radius: 6px;
   object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .modal-nav {
   position: absolute;
   top: 50%;
-  z-index: 1;
+  z-index: 3;
   transform: translateY(-50%);
   background: var(--modal-backdrop);
   color: #fff;
@@ -344,56 +390,149 @@
 }
 
 @media (max-width: 1050px) {
-  .app-shell {
-    grid-template-columns: 240px minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) 300px;
-  }
-
-  .app-shell:not(.is-image-mode) {
-    grid-template-columns: 240px minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr);
-  }
-
-  .gallery-panel {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    border-left: 0;
-    border-top: 1px solid var(--line);
-  }
-
   .resize-handle {
     display: none;
   }
 }
 
 @media (max-width: 720px) {
-  .app-shell {
-    height: 100vh;
-    height: 100dvh;
-    min-height: 0;
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr);
+  .modal {
+    padding: 0;
   }
 
-  .app-shell:not(.is-image-mode) {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr);
+  .modal-card {
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+    border: 0;
   }
 
-  .sidebar {
-    display: none;
+  .modal-card footer {
+    gap: 8px;
   }
 
-  .chat-panel {
-    min-height: 0;
+  .modal-card footer .ghost-button,
+  .modal-card footer .primary-button {
+    flex: 1 1 auto;
   }
 
-  .gallery-panel {
-    display: none;
+  .modal-nav {
+    width: 40px;
+    height: 40px;
+    font-size: 24px;
   }
 
   .quick-controls {
     margin-right: -14px;
     padding-right: 14px;
+  }
+
+  /* Панель quick-controls переносится в несколько строк вместо
+     горизонтального скролла — все элементы помещаются на экране. */
+  .quick-controls {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    padding-bottom: 0;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .ratio-picker {
+    display: grid;
+    flex: 0 0 100%;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    overflow: visible;
+    padding-bottom: 0;
+  }
+
+  .ratio-option {
+    min-width: 0;
+  }
+
+  .ratio-option span {
+    min-width: 0;
+    padding: 0 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .image-side-controls {
+    flex: 0 0 auto;
+  }
+
+  .composer-actions .primary-button {
+    min-height: 48px;
+  }
+
+  /* Картинки ассистента в чате — по ширине экрана, не шире. */
+  .image-strip-large {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .image-card-large {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .image-card-large img {
+    width: 100%;
+    height: auto;
+    max-width: 100%;
+    object-fit: contain;
+  }
+
+  /* Превью референса пользователя — тоже ограничить шириной экрана. */
+  .image-strip:not(.image-strip-large) {
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    max-width: 100%;
+  }
+
+  /* Masonry: скроллит вся панель галереи, колонки растут вниз без
+     горизонтального переполнения (columns + overflow:auto создают
+     скролл вбок, поэтому скролл вынесен на .gallery-panel). */
+  .gallery-panel {
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .gallery-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--panel-dark);
+  }
+
+  .gallery-grid {
+    display: block;
+    flex: none;
+    overflow: visible;
+    column-count: 3;
+    column-gap: 8px;
+    padding: 10px;
+  }
+
+  .gallery-grid .image-card {
+    display: block;
+    margin: 0 0 8px;
+    break-inside: avoid;
+    -webkit-column-break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .gallery-grid .image-card img {
+    aspect-ratio: auto;
+    width: 100%;
+    height: auto;
+    object-fit: contain;
   }
 }

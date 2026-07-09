@@ -3,9 +3,11 @@
     const defaults = {
         theme: 'dark',
         fontSize: 14,
+        sliderDuration: 0,
     };
     const limits = {
         fontSize: { min: 12, max: 20 },
+        sliderDuration: { min: 0, max: 1000 },
     };
     let settings = normalize(load());
     let mediaQuery = null;
@@ -74,6 +76,7 @@
         return {
             theme: normalizeTheme(value.theme),
             fontSize: boundedNumber(value.fontSize, defaults.fontSize, limits.fontSize.min, limits.fontSize.max),
+            sliderDuration: boundedNumber(value.sliderDuration, defaults.sliderDuration, limits.sliderDuration.min, limits.sliderDuration.max),
         };
     }
 
@@ -96,6 +99,7 @@
         document.documentElement.dataset.theme = resolvedTheme;
         document.documentElement.dataset.themePreference = value.theme;
         document.documentElement.style.setProperty('--app-font-size', value.fontSize + 'px');
+        document.documentElement.style.setProperty('--slider-duration', value.sliderDuration + 'ms');
     }
 
     function toggleTheme() {

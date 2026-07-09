@@ -26,7 +26,7 @@ session_write_close();
 $action = requestAction();
 $prompt = trim(isset($_POST['prompt']) ? (string) $_POST['prompt'] : '');
 $chatId = trim(isset($_POST['chat_id']) ? (string) $_POST['chat_id'] : '');
-$mode = $action === 'regenerate_image' ? 'image' : requestMode();
+$mode = ($action === 'regenerate_image' || $action === 'retry') ? '' : requestMode();
 $ratio = trim(isset($_POST['ratio']) ? (string) $_POST['ratio'] : '');
 $imageCount = selectedImageCount();
 $requestLogged = false;
@@ -34,6 +34,10 @@ $requestLogged = false;
 try {
     if ($action === 'regenerate_image') {
         handleImageRegenerationRequest($chats, $images, $client, $config, $chatId);
+    }
+
+    if ($action === 'retry') {
+        handleRetryRequest($chats, $images, $client, $config, $chatId);
     }
 
     if ($prompt === '') {
@@ -47,7 +51,12 @@ try {
     handleChatRequest($chats, $client, $config, $prompt, $chatId, $requestLogged);
 } catch (Throwable $exception) {
     $details = exceptionDetails($exception, $mode);
-    $chat = appendErrorMessage($chats, $chatId, $prompt, $mode, $requestLogged, $exception);
+
+    if ($action === 'retry') {
+        $chat = replaceWithErrorMessage($chats, $chatId, $details, $exception);
+    } else {
+        $chat = appendErrorMessage($chats, $chatId, $prompt, $mode, $requestLogged, $exception);
+    }
 
     if ($chat !== null) {
         JsonResponse::error($exception->getMessage(), errorStatus($exception), ['chat' => $chat, 'errorDetails' => $details]);
@@ -203,6 +212,123 @@ function handleImageRegenerationRequest(
     );
 
     $chat = $chats->appendMessageVariant($chatId, $messageId, $response['variant']);
+
+    JsonResponse::send([
+        'ok' => true,
+        'chat' => $chat,
+        'images' => $response['images'],
+    ]);
+}
+
+function handleRetryRequest(
+    ChatRepository $chats,
+    ImageStorage $images,
+    NeurogateClient $client,
+    Config $config,
+    string $chatId
+): void {
+    $messageId = trim(isset($_POST['message_id']) ? (string) $_POST['message_id'] : '');
+
+    if ($chatId === '' || $messageId === '') {
+        throw new RuntimeException('Сообщение не найдено.');
+    }
+
+    $context = $chats->retryContext($chatId, $messageId);
+    $prompt = (string) $context['prompt'];
+    $retryMode = (string) $context['mode'];
+
+    if ($retryMode === 'image') {
+        handleImageRetry($chats, $images, $client, $config, $chatId, $messageId, $context);
+        return;
+    }
+
+    handleChatRetry($chats, $client, $config, $chatId, $messageId, $prompt);
+}
+
+function handleChatRetry(
+    ChatRepository $chats,
+    NeurogateClient $client,
+    Config $config,
+    string $chatId,
+    string $messageId,
+    string $prompt
+): void {
+    $chat = $chats->get($chatId);
+    $messages = isset($chat['messages']) && is_array($chat['messages']) ? $chat['messages'] : [];
+
+    $startedAt = microtime(true);
+    $result = $client->chat(textChatMessages($messages));
+    $text = trim((string) $result['text']);
+    $usage = is_array($result['usage']) ? $result['usage'] : null;
+    $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
+
+    if ($text === '') {
+        throw new RuntimeException('API did not return text.');
+    }
+
+    $message = $chats->newMessage('assistant', $text, [
+        'mode' => 'chat',
+        'usage' => $usage,
+        'api' => [
+            'responseId' => $result['id'],
+            'model' => $config->string('api.model', 'gpt-5.5'),
+            'durationMs' => $durationMs,
+            'usage' => $usage,
+        ],
+    ]);
+
+    $chat = $chats->replaceMessage($chatId, $messageId, $message);
+
+    JsonResponse::send([
+        'ok' => true,
+        'chat' => $chat,
+    ]);
+}
+
+function handleImageRetry(
+    ChatRepository $chats,
+    ImageStorage $images,
+    NeurogateClient $client,
+    Config $config,
+    string $chatId,
+    string $messageId,
+    array $context
+): void {
+    $prompt = (string) $context['prompt'];
+    $references = isset($context['images']) && is_array($context['images']) ? $context['images'] : [];
+    $settings = isset($context['settings']) && is_array($context['settings']) ? $context['settings'] : [];
+
+    $imageSize = isset($settings['size']) && is_string($settings['size']) && $settings['size'] !== ''
+        ? $settings['size']
+        : null;
+    $ratio = isset($settings['ratio']) && is_string($settings['ratio']) ? $settings['ratio'] : '';
+    $imageCount = isset($settings['imageCount']) && is_int($settings['imageCount'])
+        ? $settings['imageCount']
+        : 1;
+
+    $response = generateImageVariant(
+        $chats,
+        $images,
+        $client,
+        $config,
+        $prompt,
+        referenceDataUrls($images, $references),
+        $imageSize,
+        $ratio,
+        $imageCount
+    );
+    $variant = $response['variant'];
+
+    $message = $chats->newMessage('assistant', (string) $variant['content'], [
+        'mode' => 'image',
+        'images' => $variant['images'],
+        'usage' => $variant['usage'] ?? null,
+        'api' => $variant['api'],
+        'variants' => [$variant],
+        'activeVariantId' => $variant['id'],
+    ]);
+
+    $chat = $chats->replaceMessage($chatId, $messageId, $message);
 
     JsonResponse::send([
         'ok' => true,
@@ -382,6 +508,40 @@ function appendErrorMessage(
     ]));
 }
 
+function replaceWithErrorMessage(
+    ChatRepository $chats,
+    string $chatId,
+    array $details,
+    Throwable $exception
+): ?array {
+    if ($chatId === '') {
+        return null;
+    }
+
+    $chat = $chats->get($chatId);
+
+    if ($chat === null) {
+        return null;
+    }
+
+    $messages = isset($chat['messages']) && is_array($chat['messages']) ? $chat['messages'] : [];
+    $messageId = trim(isset($_POST['message_id']) ? (string) $_POST['message_id'] : '');
+
+    foreach ($messages as $message) {
+        if (($message['id'] ?? '') === $messageId) {
+            $mode = ($message['mode'] ?? '') === 'image' ? 'image' : 'chat';
+
+            return $chats->replaceMessage($chatId, $messageId, $chats->newMessage('assistant', 'Ошибка: ' . $exception->getMessage(), [
+                'mode' => $mode,
+                'error' => true,
+                'errorDetails' => $details,
+            ]));
+        }
+    }
+
+    return null;
+}
+
 function exceptionDetails(Throwable $exception, string $mode): array
 {
     return [
@@ -487,7 +647,7 @@ function requestAction(): string
         return 'generate';
     }
 
-    if ($action !== 'generate' && $action !== 'regenerate_image') {
+    if ($action !== 'generate' && $action !== 'regenerate_image' && $action !== 'retry') {
         JsonResponse::error('Неизвестное действие.', 422);
     }
 

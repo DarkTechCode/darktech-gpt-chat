@@ -43,7 +43,7 @@ function h(string $value): string
 }
 
 $projectName = 'DarkTech GPT Chat';
-$projectVersion = 'v1.0.0';
+$projectVersion = 'v2.0.0';
 $projectUrl = 'https://darktech.ru';
 
 $boot = [
@@ -81,6 +81,10 @@ $boot = [
                 ? defaults.theme
                 : settings.theme;
             var fontSize = Number(settings.fontSize) || defaults.fontSize;
+            var sliderDuration = Number(settings.sliderDuration);
+            sliderDuration = Number.isFinite(sliderDuration) && sliderDuration >= 0
+                ? Math.min(1000, Math.round(sliderDuration))
+                : 0;
             var resolvedTheme = theme === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
                 ? 'light'
                 : theme === 'system' ? 'dark' : theme;
@@ -88,6 +92,7 @@ $boot = [
             document.documentElement.dataset.theme = resolvedTheme;
             document.documentElement.dataset.themePreference = theme;
             document.documentElement.style.setProperty('--app-font-size', Math.min(20, Math.max(12, Math.round(fontSize))) + 'px');
+            document.documentElement.style.setProperty('--slider-duration', sliderDuration + 'ms');
         }());
     </script>
     <link rel="stylesheet" href="assets/vendor/prism/prism-tomorrow.min.css">
@@ -119,15 +124,32 @@ $boot = [
             </form>
         </main>
     <?php else: ?>
-        <div class="app-shell" style="--gallery-columns: <?= h((string) $galleryColumns); ?>;" data-app-shell>
+        <nav class="mobile-tabs" data-mobile-tabs hidden>
+            <button type="button" class="mobile-tab" data-mobile-tab="chats">Чаты</button>
+            <button type="button" class="mobile-tab is-active" data-mobile-tab="chat">Чат</button>
+            <button type="button" class="mobile-tab" data-mobile-tab="gallery">Галерея</button>
+        </nav>
+
+        <div class="app-shell" style="--gallery-columns: <?= h((string) $galleryColumns); ?>;" data-app-shell data-view="chat">
             <aside class="sidebar">
                 <header class="sidebar-head">
                     <div class="brand-block">
                         <strong><?= h($projectName); ?></strong>
                         <a class="brand-version" href="<?= h($projectUrl); ?>" target="_blank" rel="noopener"><?= h($projectVersion); ?></a>
                     </div>
-                    <button type="button" class="ghost-button new-chat-button" data-new-chat>+ новый чат</button>
+                    <div class="sidebar-head-actions">
+                        <button type="button" class="icon-button chat-search-toggle" data-toggle-chat-search title="Поиск по чатам" aria-label="Поиск по чатам" aria-pressed="false">🔍</button>
+                        <button type="button" class="ghost-button new-chat-button" data-new-chat>+ новый чат</button>
+                    </div>
                 </header>
+                <div class="chat-search-panel" data-chat-search-panel hidden>
+                    <input type="text" class="chat-search-input" data-chat-search-input placeholder="Поиск по чатам..." autocomplete="off">
+                    <div class="chat-filters" role="group" aria-label="Фильтр чатов">
+                        <button type="button" class="chat-filter is-active" data-chat-filter="all">Все</button>
+                        <button type="button" class="chat-filter" data-chat-filter="text">Текст</button>
+                        <button type="button" class="chat-filter" data-chat-filter="images">Картинки</button>
+                    </div>
+                </div>
                 <nav class="chat-list" data-chat-list></nav>
                 <footer class="sidebar-foot">
                     <span>
@@ -164,6 +186,7 @@ $boot = [
                     </div>
                     <div class="topbar-actions">
                         <button type="button" class="icon-button theme-toggle-button" data-chat-action data-theme-toggle title="Светлая тема" aria-label="Светлая тема">☀</button>
+                        <button type="button" class="icon-button gallery-toggle-button" data-toggle-gallery title="Галерея" aria-label="Галерея" hidden>▦</button>
                         <button type="button" class="ghost-button" data-chat-action data-open-settings>Настройки</button>
                         <button type="button" class="ghost-button" data-settings-action data-close-settings hidden>К чату</button>
                         <button type="button" class="ghost-button mode-button" data-chat-action data-image-mode aria-pressed="false">Картинки</button>
@@ -201,13 +224,17 @@ $boot = [
                                 <div class="settings-grid">
                                     <label class="field">
                                         <span>Ширина списка чатов, px</span>
-                                        <input type="number" name="appearance.sidebarWidth" min="260" max="1920" step="10">
+                                        <input type="number" name="appearance.sidebarWidth" min="260" max="1920">
                                     </label>
                                     <label class="field">
                                         <span>Ширина галереи, px</span>
-                                        <input type="number" name="appearance.galleryWidth" min="320" max="2460" step="10">
+                                        <input type="number" name="appearance.galleryWidth" min="320" max="2460">
                                     </label>
                                 </div>
+                                <label class="field">
+                                    <span>Скорость анимации перелистывания, мс (0 — мгновенно)</span>
+                                    <input type="number" name="appearance.sliderDuration" min="0" max="1000">
+                                </label>
                                 <button type="button" class="ghost-button settings-reset-button" data-reset-appearance>Сбросить оформление</button>
 
                                 <h4 class="settings-subtitle">Галерея</h4>
@@ -323,13 +350,18 @@ $boot = [
 
             <div class="resize-handle resize-handle-gallery" data-resize-gallery title="Изменить ширину галереи"></div>
 
+            <div class="gallery-backdrop" data-close-gallery hidden></div>
+
             <aside class="gallery-panel">
                 <header class="gallery-head">
                     <div>
                         <p class="eyebrow">img</p>
                         <h2>Галерея</h2>
                     </div>
-                    <button type="button" class="icon-button" data-refresh-gallery title="Обновить">↻</button>
+                    <div class="gallery-head-actions">
+                        <button type="button" class="icon-button" data-refresh-gallery title="Обновить">↻</button>
+                        <button type="button" class="icon-button gallery-close-button" data-close-gallery title="Закрыть" aria-label="Закрыть" hidden>✕</button>
+                    </div>
                 </header>
                 <div class="gallery-grid" data-gallery></div>
                 <footer class="gallery-more" data-gallery-more hidden>
@@ -341,16 +373,16 @@ $boot = [
         <div class="modal" data-modal hidden>
             <div class="modal-backdrop" data-close-modal></div>
             <section class="modal-card">
+                <button type="button" class="icon-button modal-close-button" data-close-modal title="Закрыть" aria-label="Закрыть">✕</button>
                 <header>
                     <div>
                         <h2 data-modal-title></h2>
                         <p data-modal-meta></p>
                     </div>
-                    <button type="button" class="ghost-button" data-close-modal>Закрыть</button>
                 </header>
-                <div class="modal-image-wrap">
+                <div class="modal-slider-wrap" data-modal-slider>
+                    <div class="modal-slider-track" data-modal-track></div>
                     <button type="button" class="icon-button modal-nav modal-prev" data-modal-prev title="Предыдущее изображение" aria-label="Предыдущее изображение">‹</button>
-                    <img data-modal-image alt="">
                     <button type="button" class="icon-button modal-nav modal-next" data-modal-next title="Следующее изображение" aria-label="Следующее изображение">›</button>
                 </div>
                 <footer>
@@ -391,6 +423,7 @@ $boot = [
     <script src="assets/app.js"></script>
     <script src="assets/settings.js"></script>
     <script src="assets/layout.js"></script>
+    <script src="assets/mobile.js"></script>
 </body>
 
 </html>
