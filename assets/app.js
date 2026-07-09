@@ -1216,7 +1216,12 @@
         modal.hidden = false;
 
         const chatId = state.activeChat ? state.activeChat.id : '';
-        const imageChatId = image && image.chatId ? image.chatId : chatId;
+
+        /* chatId есть только у generated-картинок (присваивается в чате
+           или через контекст галереи). Референсы его не имеют — для них
+           перелистывание по чату не применяется (их там нет), и мы листаем
+           в рамках переданного списка (галерея или конкретное сообщение). */
+        const imageChatId = image && image.chatId ? image.chatId : '';
 
         /* Картинка из текущего чата — перелистываем по всем его картинкам
            (все сообщения и варианты). Картинка из галереи (другой чат) —
